@@ -16,7 +16,7 @@ import traceback
 #                     КОНФИГУРАЦИЯ
 # ══════════════════════════════════════════════════════════════
 
-BOT_TOKEN = "8782136903:AAGw-984UI9HShcyE9DFF_8U-w_UhJ_nAYg"
+BOT_TOKEN = "8576021571:AAE67Sv3IZ-W7HO5wVN2N21B9RYwpLBd8mY"
 ADMIN_IDS = [5494544187]  # Замените на ваш Telegram ID
 
 MIN_DEPOSIT = 500
