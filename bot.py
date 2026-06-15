@@ -1,4 +1,3 @@
-# В начале файла добавь/замени импорты:
 import asyncio
 import logging
 import os
@@ -14,13 +13,25 @@ import aiosqlite
 load_dotenv()
 
 # ============================================================
-# КОНФИГУРАЦИЯ
+# КОНФИГУРАЦИЯ (с fallback'ом если .env не работает)
 # ============================================================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-YOOMONEY_WALLET = os.getenv("YOOMONEY_WALLET")
-YOOMONEY_TOKEN = os.getenv("YOOMONEY_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN") or "8800941405:AAH0TZbP48M5grkVxZ-tvP7lxK72eTSg4yc"
+ADMIN_ID = int(os.getenv("ADMIN_ID", "5494544187"))
+YOOMONEY_WALLET = os.getenv("YOOMONEY_WALLET", "4100118935779591")
+YOOMONEY_TOKEN = os.getenv("YOOMONEY_TOKEN", "5133D1719448E2A5E1083A0FC605E369944CBB992B1D4490F13E2D4636C03191")
 DB_PATH = "autogram.db"
+
+# ============================================================
+# ДИАГНОСТИКА ПРИ ЗАПУСКЕ
+# ============================================================
+print("=" * 50)
+print("🤖 AutoGram AI — Запуск")
+print(f"BOT_TOKEN: {BOT_TOKEN[:15]}...{BOT_TOKEN[-5:]}")
+print(f"BOT_TOKEN длина: {len(BOT_TOKEN)}")
+print(f"ADMIN_ID: {ADMIN_ID}")
+print(f"YOOMONEY_WALLET: {YOOMONEY_WALLET}")
+print(f"DB_PATH: {DB_PATH}")
+print("=" * 50)
 
 # ============================================================
 # ЭКОНОМИКА
@@ -480,20 +491,16 @@ async def shop_servers(callback: types.CallbackQuery):
 🔥 <b>🍓 Raspberry Pi</b> за 5 000 🧠:
    • Приносит 80 🧠/мин
    • За сутки: <b>115 200 🧠</b> = 1 152₽
-   • <b>Окупаемость: 1 час!</b>
 
 🔥 <b>💻 Игровой ноутбук</b> за 50 000 🧠:
    • Приносит 900 🧠/мин
    • За сутки: <b>1 296 000 🧠</b> = 12 960₽
-   • <b>Окупаемость: 1 час!</b>
 
 🔥 <b>🖥 Игровой ПК</b> за 500 000 🧠:
    • Приносит 10 000 🧠/мин
    • За сутки: <b>14 400 000 🧠</b> = 144 000₽
-   • <b>Окупаемость: 50 минут!</b>
 
 ⚡ <b>Купи несколько — доход суммируется!</b>
-🚀 <b>Совет:</b> начни с Raspberry Pi, докупай каждый час!
 
 🔥 <b>Твои серверы:</b> {sum(servers.values()) if servers else 0} шт.
 
@@ -545,7 +552,6 @@ async def shop_employees(callback: types.CallbackQuery):
 • Один Senior умножает доход в 3 раза!
 • Два Senior — в 9 раз!
 • Работают 24/7 без выходных
-• Окупаются за минуты
 
 🔥 <b>Примеры:</b>
 • Junior (x1.5) — доход +50%
@@ -667,11 +673,6 @@ async def deposit_callback(callback: types.CallbackQuery):
 • Купи 1 сервер «Игровой ПК» (500 000 🧠) → доход 10 000/мин
 • Это <b>600 000 🧠/час</b> = 6 000₽/час
 • За сутки: <b>144 000₽</b> 💰
-
-⚡ <b>Зачем пополнять больше?</b>
-• Серверы приносят доход 24/7
-• Реальные деньги на карту
-• Окупаемость от 1 часа
 
 Выбирай тариф:"""
     
@@ -1029,7 +1030,7 @@ async def daily_callback(callback: types.CallbackQuery):
     today = now.date().isoformat()
     
     if last_bonus_str == today:
-        await callback.answer("⏳ Бонус уже получен сегодня!\nСледующий доступен завтра в 00:00", show_alert=True)
+        await callback.answer("⏳ Бонус уже получен сегодня!", show_alert=True)
         return
     
     new_streak = 1
@@ -1077,10 +1078,6 @@ async def referrals_callback(callback: types.CallbackQuery):
 • 1 уровень: <b>{refs.get(1, 0)}</b> чел.
 • 2 уровень: <b>{refs.get(2, 0)}</b> чел.
 • 3 уровень: <b>{refs.get(3, 0)}</b> чел.
-
-💎 <b>Пример:</b>
-Твой реферал пополнил на 10 000₽
-Ты получаешь: <b>{REF_LEVELS[1] * 100:,} 🧠</b> моментально!
 
 ⚡ <b>Чем больше рефералов — тем больше доход!</b>
 
@@ -1196,8 +1193,12 @@ async def income_loop():
         await asyncio.sleep(60)
 
 async def main():
+    print("🚀 Инициализация базы данных...")
     await init_db()
+    print("✅ База данных готова")
+    print("🔄 Запуск фоновой задачи дохода...")
     asyncio.create_task(income_loop())
+    print("✅ Бот запускается...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
