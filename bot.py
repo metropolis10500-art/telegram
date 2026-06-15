@@ -24,62 +24,56 @@ PROJECT_NAME = os.getenv("PROJECT_NAME", "AutoGram AI")
 DB_PATH = "autogram.db"
 
 # ============================================================
-# ЭКОНОМИКА (настроена для хорошего заработка создателя)
+# ЭКОНОМИКА
 # ============================================================
-# Курс: 1₽ = 100 нейронов
 NEURONS_PER_RUB = 100
-MIN_WITHDRAW_RUB = 100  # минимальный вывод
-WITHDRAW_FEE_PERCENT = 10  # комиссия 10% при выводе (твой заработок)
+MIN_WITHDRAW_RUB = 100
+WITHDRAW_FEE_PERCENT = 10
 
-# Тарифы пополнения (с наценкой для заработка создателя)
+# Тарифы пополнения
 DEPOSIT_PACKAGES = {
-    "100":  {"neurons": 8000,   "bonus": 0,    "label": "Старт"},      # -20% от номинала
-    "300":  {"neurons": 27000,  "bonus": 3000, "label": "Базовый"},    # -10% + бонус
-    "500":  {"neurons": 50000,  "bonus": 7500, "label": "Стандарт"},   # бонус 15%
-    "1000": {"neurons": 110000, "bonus": 25000,"label": "Профи"},      # +10% + бонус
-    "3000": {"neurons": 360000, "bonus": 120000,"label": "Бизнес"},    # +20% + бонус
-    "5000": {"neurons": 650000, "bonus": 250000,"label": "VIP"},       # +30% + бонус
-    "10000":{"neurons": 1500000,"bonus": 700000,"label": "PREMIUM"}    # +50% + бонус
+    "100":  {"neurons": 8000,   "bonus": 0,     "label": "Старт"},
+    "300":  {"neurons": 27000,  "bonus": 3000,  "label": "Базовый"},
+    "500":  {"neurons": 50000,  "bonus": 7500,  "label": "Стандарт"},
+    "1000": {"neurons": 110000, "bonus": 25000, "label": "Профи"},
+    "3000": {"neurons": 360000, "bonus": 120000,"label": "Бизнес"},
+    "5000": {"neurons": 650000, "bonus": 250000,"label": "VIP"},
+    "10000":{"neurons": 1500000,"bonus": 700000,"label": "PREMIUM"}
 }
 
-# Серверы (цена в нейронах, доход в нейронах в минуту)
-# Доходность: от 0.3% до 1% в минуту = 43% - 1440% в сутки (психологически привлекательно)
+# Серверы
 SERVERS = {
-    "raspberry": {"name": "🍓 Raspberry Pi",      "price": 500,      "income": 5,      "icon": "🍓", "desc": "Идеален для старта"},
-    "laptop":    {"name": "💻 Игровой ноутбук",   "price": 5000,     "income": 60,     "icon": "💻", "desc": "Стабильный доход"},
-    "pc":        {"name": "🖥 Игровой ПК",        "price": 50000,    "income": 700,    "icon": "🖥", "desc": "Серьёзная машина"},
-    "server":    {"name": "🗄 Серверная стойка",  "price": 500000,   "income": 8000,   "icon": "🗄", "desc": "Для опытных"},
-    "gpu":       {"name": "⚡ RTX 4090 Cluster",  "price": 5000000,  "income": 90000,  "icon": "⚡", "desc": "Мощь NVIDIA"},
-    "datacenter":{"name": "🏢 Дата-центр",        "price": 50000000, "income": 1000000,"icon": "🏢", "desc": "Уровень корпорации"},
-    "quantum":   {"name": "🔮 Квантовый компьютер","price": 500000000,"income": 12000000,"icon": "🔮", "desc": "Технологии будущего"}
+    "raspberry": {"name": "🍓 Raspberry Pi",       "price": 500,        "income": 5,       "icon": "🍓", "desc": "Идеален для старта"},
+    "laptop":    {"name": "💻 Игровой ноутбук",    "price": 5000,       "income": 60,      "icon": "💻", "desc": "Стабильный доход"},
+    "pc":        {"name": "🖥 Игровой ПК",         "price": 50000,      "income": 700,     "icon": "🖥", "desc": "Серьёзная машина"},
+    "server":    {"name": "🗄 Серверная стойка",   "price": 500000,     "income": 8000,    "icon": "🗄", "desc": "Для опытных"},
+    "gpu":       {"name": "⚡ RTX 4090 Cluster",   "price": 5000000,    "income": 90000,   "icon": "⚡", "desc": "Мощь NVIDIA"},
+    "datacenter":{"name": "🏢 Дата-центр",         "price": 50000000,   "income": 1000000, "icon": "🏢", "desc": "Уровень корпорации"},
+    "quantum":   {"name": "🔮 Квантовый компьютер","price": 500000000,  "income": 12000000,"icon": "🔮", "desc": "Технологии будущего"}
 }
 
-# Сотрудники (множители к доходу)
+# Сотрудники
 EMPLOYEES = {
-    "junior":   {"name": "👨‍💻 Junior Data Scientist",  "price": 1000,     "multiplier": 1.25, "icon": "👨‍💻"},
-    "middle":   {"name": "👩‍💻 Middle ML Engineer",     "price": 15000,    "multiplier": 1.6,  "icon": "👩‍💻"},
-    "senior":   {"name": "🧑‍💻 Senior AI Architect",   "price": 200000,   "multiplier": 2.2,  "icon": "🧑‍💻"},
-    "lead":     {"name": "🎯 Lead AI Researcher",      "price": 3000000,  "multiplier": 3.5,  "icon": "🎯"},
-    "cto":      {"name": "🤖 CTO с ИИ-усилителем",     "price": 50000000, "multiplier": 5.0,  "icon": "🤖"}
+    "junior":   {"name": "👨‍💻 Junior Data Scientist",  "price": 1000,      "multiplier": 1.25, "icon": "👨‍💻"},
+    "middle":   {"name": "👩‍💻 Middle ML Engineer",     "price": 15000,     "multiplier": 1.6,  "icon": "👩‍💻"},
+    "senior":   {"name": "🧑‍💻 Senior AI Architect",   "price": 200000,    "multiplier": 2.2,  "icon": "🧑‍💻"},
+    "lead":     {"name": "🎯 Lead AI Researcher",      "price": 3000000,   "multiplier": 3.5,  "icon": "🎯"},
+    "cto":      {"name": "🤖 CTO с ИИ-усилителем",     "price": 50000000,  "multiplier": 5.0,  "icon": "🤖"}
 }
 
-# Улучшения (разовые бусты)
+# Улучшения
 UPGRADES = {
-    "cooling":  {"name": "❄️ Система охлаждения", "price": 2000,       "multiplier": 1.15, "desc": "+15% к доходу навсегда"},
-    "net":      {"name": "🌐 Оптимизация сети",   "price": 25000,      "multiplier": 1.20, "desc": "+20% к доходу навсегда"},
-    "quantum":  {"name": "⚛ Квантовая оптимизация","price": 500000",   "multiplier": 1.30, "desc": "+30% к доходу навсегда"},
-    "neural":   {"name": "🧠 Нейроинтерфейс",     "price": 15000000,   "multiplier": 1.50, "desc": "+50% к доходу навсегда"}
+    "cooling":  {"name": "❄️ Система охлаждения",   "price": 2000,      "multiplier": 1.15, "desc": "+15% к доходу навсегда"},
+    "net":      {"name": "🌐 Оптимизация сети",     "price": 25000,     "multiplier": 1.20, "desc": "+20% к доходу навсегда"},
+    "quantum":  {"name": "⚛️ Квантовая оптимизация","price": 500000,    "multiplier": 1.30, "desc": "+30% к доходу навсегда"},
+    "neural":   {"name": "🧠 Нейроинтерфейс",       "price": 15000000,  "multiplier": 1.50, "desc": "+50% к доходу навсегда"}
 }
 
 # Реферальная система
-REF_LEVELS = {
-    1: 7,   # 7% от пополнений
-    2: 3,   # 3%
-    3: 1    # 1%
-}
-REF_BONUS_NEURONS = 1000  # бонус за каждого приглашённого
+REF_LEVELS = {1: 7, 2: 3, 3: 1}
+REF_BONUS_NEURONS = 1000
 
-# Ежедневный бонус (растущий)
+# Ежедневный бонус
 DAILY_BONUS = [100, 250, 500, 1000, 2000, 4000, 8000, 15000, 30000, 50000]
 
 # Рулетка
@@ -90,8 +84,7 @@ ROULETTE_PRIZES = [
     ("💰 5000 нейронов",  5000,   12),
     ("💎 15000 нейронов", 15000,  7),
     ("🚀 50000 нейронов", 50000,  4),
-    ("❌ Ничего",         0,      2),
-    ("🎰 x2 бонус",       "x2",   0)  # обрабатывается отдельно
+    ("❌ Ничего",         0,      2)
 ]
 
 # ============================================================
@@ -189,14 +182,11 @@ async def add_user(user_id, username, first_name, referrer_id=None):
                 "INSERT INTO users (user_id, username, first_name, referrer_id) VALUES (?, ?, ?, ?)",
                 (user_id, username or "", first_name or "Игрок", referrer_id)
             )
-            # Бонус рефереру
             if referrer_id and referrer_id != user_id:
-                # Бонус рефереру
                 await db.execute(
                     "UPDATE users SET neurons = neurons + ? WHERE user_id = ?",
                     (REF_BONUS_NEURONS, referrer_id)
                 )
-                # Сохраняем связь
                 cur2 = await db.execute("SELECT referrer_id FROM users WHERE user_id = ?", (referrer_id,))
                 ref2 = await cur2.fetchone()
                 if ref2 and ref2[0]:
@@ -257,19 +247,16 @@ async def get_user_upgrades(user_id):
         return set(row[0] for row in await cur.fetchall())
 
 async def calculate_income(user_id):
-    """Возвращает (доход_в_минуту, доход_в_час, доход_в_день)"""
     servers = await get_user_servers(user_id)
     employees = await get_user_employees(user_id)
     upgrades = await get_user_upgrades(user_id)
     
     base_income = sum(SERVERS[s]["income"] * count for s, count in servers.items())
     
-    # Множители от сотрудников (перемножаются)
     emp_multiplier = 1.0
     for e, count in employees.items():
         emp_multiplier *= EMPLOYEES[e]["multiplier"] ** count
     
-    # Множители от улучшений
     upgrade_multiplier = 1.0
     for u in upgrades:
         upgrade_multiplier *= UPGRADES[u]["multiplier"]
@@ -307,7 +294,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# Хранилище активных операций
 pending_payments = {}
 pending_withdrawals = {}
 
@@ -336,14 +322,14 @@ MAIN_MENU = """🧠 <b>AutoGram AI</b> — твоя нейросеть прин�
 
 💰 <b>Баланс:</b> {neurons:,} нейронов ({rubles}₽)
 📈 <b>Доход:</b> {income_per_min}/мин · {income_per_hour}/час · {income_per_day}/день
-⚡ <b>Множитель:</b> x{total_multiplier:.1f}
+⚡ <b>Множитель:</b> x{total_multiplier:.2f}
 
 👥 <b>Рефералы:</b> {refs_1}·{refs_2}·{refs_3} (1·2·3 уровни)
 🔥 <b>Streak:</b> {streak} дней
 
 🛒 <b>Магазин мотивирует:</b>
 💡 «Серверы окупаются за 100 минут и работают вечно!»
-💡 «Купи сотрудника x{emp_x} и удвой доход!»
+💡 «Купи сотрудника x5 и удвой доход!»
 
 Выбирай действие 👇"""
 
@@ -416,7 +402,6 @@ def employees_shop_kb(user_balance):
 def upgrades_shop_kb(user_balance, owned):
     buttons = []
     for key, upg in UPGRADES.items():
-        is_owned = "✅ КУПЛЕНО" if key in owned else "🛒"
         if key not in owned:
             can_buy = "✅" if user_balance >= upg["price"] else "🔒"
             buttons.append([types.InlineKeyboardButton(
@@ -425,7 +410,7 @@ def upgrades_shop_kb(user_balance, owned):
             )])
         else:
             buttons.append([types.InlineKeyboardButton(
-                text=f"{is_owned} {upg['name']} — {upg['desc']}",
+                text=f"✅ КУПЛЕНО: {upg['name']} — {upg['desc']}",
                 callback_data="noop"
             )])
     buttons.append([types.InlineKeyboardButton(text="◀️ В меню", callback_data="menu")])
@@ -506,8 +491,7 @@ async def profile_callback(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "mine")
 async def mine_callback(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
-    # Множитель от покупок влияет и на клик
-    _, _, _, _, _, _, _, _, _, _, _, _, streak = user
+    streak = user[11] or 0
     bonus = min(streak * 2, 50)
     reward = 10 + bonus
     
@@ -575,16 +559,13 @@ async def buy_server(callback: types.CallbackQuery):
     )
     
     user = await get_user(callback.from_user.id)
+    servers = await get_user_servers(callback.from_user.id)
     text = f"""🖥 <b>Магазин серверов</b>
 
 💰 Твой баланс: <b>{user[3]:,}</b> 🧠
 📈 Текущий доход: <b>{income_per_min:,}/мин</b>
 
-💡 <b>Почему стоит покупать?</b>
-• Серверы окупаются за 100 минут работы
-• Доход начисляется КАЖДУЮ минуту
-
-🔥 <b>Твои серверы:</b> {sum((await get_user_servers(callback.from_user.id)).values())} шт.
+🔥 <b>Твои серверы:</b> {sum(servers.values())} шт.
 
 ✅ Куплено: {srv['name']}!"""
     await callback.message.edit_text(text, reply_markup=servers_shop_kb(user[3]))
@@ -734,7 +715,6 @@ async def deposit_amount(callback: types.CallbackQuery):
         "bonus": pkg["bonus"]
     }
     
-    # Сохраняем в БД
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO deposits (user_id, amount_rub, neurons_amount, label) VALUES (?, ?, ?, ?)",
@@ -781,7 +761,6 @@ async def check_payment(callback: types.CallbackQuery):
     
     payment = pending_payments[label]
     
-    # Проверка через API
     try:
         from yoomoney import Client
         client = Client(YOOMONEY_TOKEN)
@@ -792,7 +771,6 @@ async def check_payment(callback: types.CallbackQuery):
                 total_neurons = payment["neurons"] + payment["bonus"]
                 await update_balance(payment["user_id"], total_neurons)
                 
-                # Обновляем статистику пополнений
                 async with aiosqlite.connect(DB_PATH) as db:
                     await db.execute(
                         "UPDATE users SET total_deposited = total_deposited + ? WHERE user_id = ?",
@@ -803,7 +781,6 @@ async def check_payment(callback: types.CallbackQuery):
                         (label,)
                     )
                     
-                    # Реферальные начисления
                     cur = await db.execute("SELECT referrer_id FROM users WHERE user_id = ?", (payment["user_id"],))
                     row = await cur.fetchone()
                     if row and row[0]:
@@ -813,7 +790,6 @@ async def check_payment(callback: types.CallbackQuery):
                             "UPDATE users SET neurons = neurons + ? WHERE user_id = ?",
                             (bonus_ref, ref_id)
                         )
-                        # Уведомление рефереру
                         try:
                             await bot.send_message(
                                 ref_id,
@@ -896,15 +872,13 @@ async def withdraw_confirm(callback: types.CallbackQuery):
 async def handle_withdraw_input(message: types.Message):
     user_id = message.from_user.id
     
-    # Кастомная сумма пополнения
     if user_id in pending_payments and pending_payments[user_id].get("waiting") == "custom_amount":
         try:
             amount = int(message.text)
             if amount < 50:
                 await message.answer("❌ Минимум 50₽")
                 return
-            # Рассчитываем нейроны по среднему курсу
-            neurons = int(amount * NEURONS_PER_RUB * 0.9)  # -10% скидка за кастом
+            neurons = int(amount * NEURONS_PER_RUB * 0.9)
             label = f"dep_{user_id}_{uuid.uuid4().hex[:10]}"
             pending_payments[label] = {
                 "user_id": user_id,
@@ -934,7 +908,6 @@ async def handle_withdraw_input(message: types.Message):
             await message.answer("❌ Введи число")
         return
     
-    # Ввод реквизитов для вывода
     if user_id in pending_withdrawals:
         data = pending_withdrawals[user_id]
         if data["step"] == "wallet":
@@ -957,10 +930,8 @@ async def handle_withdraw_input(message: types.Message):
             fee = int(gross_rub * WITHDRAW_FEE_PERCENT / 100)
             net_rub = gross_rub - fee
             
-            # Списываем нейроны
             await update_balance(user_id, -(net_rub * NEURONS_PER_RUB + fee * NEURONS_PER_RUB))
             
-            # Сохраняем заявку
             async with aiosqlite.connect(DB_PATH) as db:
                 cur = await db.execute(
                     "INSERT INTO withdrawals (user_id, amount_rub, neurons_amount, wallet, bank) VALUES (?, ?, ?, ?, ?) RETURNING id",
@@ -973,7 +944,6 @@ async def handle_withdraw_input(message: types.Message):
                 )
                 await db.commit()
             
-            # Уведомление админу
             try:
                 await bot.send_message(
                     ADMIN_ID,
@@ -1006,7 +976,7 @@ async def handle_withdraw_input(message: types.Message):
 @dp.callback_query(F.data == "daily")
 async def daily_callback(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
-    last_bonus_str = user[10]  # last_bonus_date
+    last_bonus_str = user[10]
     streak = user[11] or 0
     
     now = datetime.now()
@@ -1021,7 +991,6 @@ async def daily_callback(callback: types.CallbackQuery):
         last_date = datetime.fromisoformat(last_bonus_str).date()
         if (now.date() - last_date).days == 1:
             new_streak = streak + 1
-        # Если пропустил день - streak сбрасывается
     
     streak_idx = min(new_streak - 1, len(DAILY_BONUS) - 1)
     bonus = DAILY_BONUS[streak_idx]
@@ -1048,25 +1017,14 @@ async def roulette_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Нужно минимум 100 нейронов для ставки!", show_alert=True)
         return
     
-    # Списываем ставку
     await update_balance(callback.from_user.id, -100)
     
-    # Выбираем приз
     prizes = [p for p in ROULETTE_PRIZES]
     weights = [p[2] for p in prizes]
     prize = random.choices(prizes, weights=weights)[0]
     
     if prize[0] == "❌ Ничего":
         text = f"🎰 <b>Рулетка</b>\n\n😔 К сожалению, ты ничего не выиграл.\nПопробуй ещё раз!"
-    elif prize[1] == "x2":
-        # x2 бонус к следующему клику
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "UPDATE users SET roulette_streak = roulette_streak + 1 WHERE user_id = ?",
-                (callback.from_user.id,)
-            )
-            await db.commit()
-        text = f"🎰 <b>Рулетка</b>\n\n🎉 <b>ТЫ ВЫИГРАЛ x2 БОНУС!</b>\nСледующие 10 кликов дают x2 нейронов!"
     else:
         await update_balance(callback.from_user.id, prize[1])
         text = f"🎰 <b>Рулетка</b>\n\n🎉 <b>ТЫ ВЫИГРАЛ!</b>\n\n{prize[0]}\n💰 Зачислено на баланс!"
@@ -1168,7 +1126,6 @@ async def show_main_menu(message, user_id, edit=False):
     rubles = user[3] // NEURONS_PER_RUB
     refs = await get_referrals_count(user_id)
     
-    servers = await get_user_servers(user_id)
     employees = await get_user_employees(user_id)
     upgrades = await get_user_upgrades(user_id)
     
@@ -1190,8 +1147,7 @@ async def show_main_menu(message, user_id, edit=False):
         refs_1=refs.get(1, 0),
         refs_2=refs.get(2, 0),
         refs_3=refs.get(3, 0),
-        streak=user[11] or 0,
-        emp_x=5
+        streak=user[11] or 0
     )
     
     if edit:
@@ -1199,11 +1155,7 @@ async def show_main_menu(message, user_id, edit=False):
     else:
         await message.answer(text, reply_markup=main_menu_kb())
 
-# ============================================================
-# ФОНОВЫЕ ЗАДАЧИ
-# ============================================================
 async def income_loop():
-    """Начисление дохода каждую минуту"""
     while True:
         try:
             async with aiosqlite.connect(DB_PATH) as db:
@@ -1219,9 +1171,6 @@ async def income_loop():
         
         await asyncio.sleep(60)
 
-# ============================================================
-# ЗАПУСК
-# ============================================================
 async def main():
     await init_db()
     asyncio.create_task(income_loop())
