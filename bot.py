@@ -229,7 +229,7 @@ async def how_it_works(callback: CallbackQuery):
 async def buy_tariff(callback: CallbackQuery):
     tariff = "business" if callback.data == "buy_business" else "premium"
     amount = 5000 if tariff == "business" else 10000
-    label = f"p{uuid.uuid4().hex[:8]}"  # Короткий label!
+    label = f"p{uuid.uuid4().hex[:8]}"
     
     quickpay = Quickpay(
         receiver=YOOMONEY_WALLET, quickpay_form="shop",
@@ -252,7 +252,7 @@ async def buy_tariff(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("c_"))
 async def check_payment(callback: CallbackQuery):
-    label = callback.data[2:]  # Убираем префикс "c_"
+    label = callback.data[2:]
     logger.info(f"Checking payment: {label}")
     
     try:
@@ -342,13 +342,20 @@ async def process_requisites(message: types.Message, state: FSMContext):
         "⏳ Зачисление в течение 24 часов.",
         parse_mode="HTML", reply_markup=main_menu_kb())
 
+# ============== CATCH HANDLERS ==============
+@dp.callback_query()
+async def unknown_callback(callback: CallbackQuery):
+    logger.warning(f"Unknown callback: {callback.data}")
+    await callback.answer("⚠️ Ошибка обработки", show_alert=True)
+
+# ============== STARTUP ==============
 async def on_startup():
     init_db()
     logger.info("Bot started")
 
 async def main():
     dp.startup.register(on_startup)
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 if __name__ == "__main__":
     asyncio.run(main())
