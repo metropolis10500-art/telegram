@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 import aiosqlite
 
@@ -20,72 +19,60 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 YOOMONEY_WALLET = os.getenv("YOOMONEY_WALLET")
 YOOMONEY_TOKEN = os.getenv("YOOMONEY_TOKEN")
-PROJECT_NAME = os.getenv("PROJECT_NAME", "AutoGram AI")
 DB_PATH = "autogram.db"
 
 # ============================================================
 # ЭКОНОМИКА
 # ============================================================
 NEURONS_PER_RUB = 100
-MIN_WITHDRAW_RUB = 100
-WITHDRAW_FEE_PERCENT = 10
+MIN_WITHDRAW_RUB = 3000  # Минимум 3000₽
+WITHDRAW_FEE_PERCENT = 15  # Комиссия 15%
 
-# Тарифы пополнения
+# Тарифы пополнения (от 1000₽ — серьёзные инвестиции)
 DEPOSIT_PACKAGES = {
-    "100":  {"neurons": 8000,   "bonus": 0,     "label": "Старт"},
-    "300":  {"neurons": 27000,  "bonus": 3000,  "label": "Базовый"},
-    "500":  {"neurons": 50000,  "bonus": 7500,  "label": "Стандарт"},
-    "1000": {"neurons": 110000, "bonus": 25000, "label": "Профи"},
-    "3000": {"neurons": 360000, "bonus": 120000,"label": "Бизнес"},
-    "5000": {"neurons": 650000, "bonus": 250000,"label": "VIP"},
-    "10000":{"neurons": 1500000,"bonus": 700000,"label": "PREMIUM"}
+    "1000":  {"neurons": 80000,    "bonus": 0,      "label": "Стартовый",  "desc": "Идеально для старта"},
+    "3000":  {"neurons": 270000,   "bonus": 30000,  "label": "Базовый",    "desc": "Окупаемость за 1 день"},
+    "5000":  {"neurons": 500000,   "bonus": 100000, "label": "Стандарт",   "desc": "+20% бонус"},
+    "10000": {"neurons": 1100000,  "bonus": 300000, "label": "Профи",      "desc": "+27% бонус"},
+    "30000": {"neurons": 3600000,  "bonus": 1200000,"label": "Бизнес",     "desc": "+33% бонус + VIP"},
+    "50000": {"neurons": 6500000,  "bonus": 2500000,"label": "VIP",        "desc": "+38% бонус + Premium"},
+    "100000":{"neurons": 15000000, "bonus": 7000000,"label": "PREMIUM",    "desc": "+46% бонус + Premium+"}
 }
 
-# Серверы
+# Серверы (доходность психологически завышена)
 SERVERS = {
-    "raspberry": {"name": "🍓 Raspberry Pi",       "price": 500,        "income": 5,       "icon": "🍓", "desc": "Идеален для старта"},
-    "laptop":    {"name": "💻 Игровой ноутбук",    "price": 5000,       "income": 60,      "icon": "💻", "desc": "Стабильный доход"},
-    "pc":        {"name": "🖥 Игровой ПК",         "price": 50000,      "income": 700,     "icon": "🖥", "desc": "Серьёзная машина"},
-    "server":    {"name": "🗄 Серверная стойка",   "price": 500000,     "income": 8000,    "icon": "🗄", "desc": "Для опытных"},
-    "gpu":       {"name": "⚡ RTX 4090 Cluster",   "price": 5000000,    "income": 90000,   "icon": "⚡", "desc": "Мощь NVIDIA"},
-    "datacenter":{"name": "🏢 Дата-центр",         "price": 50000000,   "income": 1000000, "icon": "🏢", "desc": "Уровень корпорации"},
-    "quantum":   {"name": "🔮 Квантовый компьютер","price": 500000000,  "income": 12000000,"icon": "🔮", "desc": "Технологии будущего"}
+    "raspberry":  {"name": "🍓 Raspberry Pi",        "price": 5000,        "income": 80,      "icon": "🍓", "desc": "Идеален для старта"},
+    "laptop":     {"name": "💻 Игровой ноутбук",     "price": 50000,       "income": 900,     "icon": "💻", "desc": "Стабильный доход"},
+    "pc":         {"name": "🖥 Игровой ПК",          "price": 500000,      "income": 10000,   "icon": "🖥", "desc": "Серьёзная машина"},
+    "server":     {"name": "🗄 Серверная стойка",    "price": 5000000,     "income": 120000,  "icon": "🗄", "desc": "Для опытных"},
+    "gpu":        {"name": "⚡ RTX 4090 Cluster",    "price": 50000000,    "income": 1500000, "icon": "⚡", "desc": "Мощь NVIDIA"},
+    "datacenter": {"name": "🏢 Дата-центр",          "price": 500000000,   "income": 18000000,"icon": "🏢", "desc": "Уровень корпорации"},
+    "quantum":    {"name": "🔮 Квантовый компьютер", "price": 5000000000,  "income": 220000000,"icon": "🔮", "desc": "Технологии будущего"}
 }
 
 # Сотрудники
 EMPLOYEES = {
-    "junior":   {"name": "👨‍💻 Junior Data Scientist",  "price": 1000,      "multiplier": 1.25, "icon": "👨‍💻"},
-    "middle":   {"name": "👩‍💻 Middle ML Engineer",     "price": 15000,     "multiplier": 1.6,  "icon": "👩‍💻"},
-    "senior":   {"name": "🧑‍💻 Senior AI Architect",   "price": 200000,    "multiplier": 2.2,  "icon": "🧑‍💻"},
-    "lead":     {"name": "🎯 Lead AI Researcher",      "price": 3000000,   "multiplier": 3.5,  "icon": "🎯"},
-    "cto":      {"name": "🤖 CTO с ИИ-усилителем",     "price": 50000000,  "multiplier": 5.0,  "icon": "🤖"}
+    "junior":   {"name": "👨‍💻 Junior Data Scientist",  "price": 10000,     "multiplier": 1.5,  "icon": "👨‍💻"},
+    "middle":   {"name": "👩‍💻 Middle ML Engineer",     "price": 200000,    "multiplier": 2.0,  "icon": "👩‍💻"},
+    "senior":   {"name": "🧑‍💻 Senior AI Architect",   "price": 3000000,   "multiplier": 3.0,  "icon": "🧑‍💻"},
+    "lead":     {"name": "🎯 Lead AI Researcher",      "price": 50000000,  "multiplier": 5.0,  "icon": "🎯"},
+    "cto":      {"name": "🤖 CTO с ИИ-усилителем",     "price": 1000000000,"multiplier": 10.0, "icon": "🤖"}
 }
 
 # Улучшения
 UPGRADES = {
-    "cooling":  {"name": "❄️ Система охлаждения",   "price": 2000,      "multiplier": 1.15, "desc": "+15% к доходу навсегда"},
-    "net":      {"name": "🌐 Оптимизация сети",     "price": 25000,     "multiplier": 1.20, "desc": "+20% к доходу навсегда"},
-    "quantum":  {"name": "⚛️ Квантовая оптимизация","price": 500000,    "multiplier": 1.30, "desc": "+30% к доходу навсегда"},
-    "neural":   {"name": "🧠 Нейроинтерфейс",       "price": 15000000,  "multiplier": 1.50, "desc": "+50% к доходу навсегда"}
+    "cooling":  {"name": "❄️ Система охлаждения",   "price": 30000,      "multiplier": 1.20, "desc": "+20% к доходу навсегда"},
+    "net":      {"name": "🌐 Оптимизация сети",     "price": 500000,     "multiplier": 1.30, "desc": "+30% к доходу навсегда"},
+    "quantum":  {"name": "⚛️ Квантовая оптимизация","price": 10000000,   "multiplier": 1.50, "desc": "+50% к доходу навсегда"},
+    "neural":   {"name": "🧠 Нейроинтерфейс",       "price": 250000000,  "multiplier": 2.00, "desc": "+100% к доходу навсегда"}
 }
 
 # Реферальная система
-REF_LEVELS = {1: 7, 2: 3, 3: 1}
-REF_BONUS_NEURONS = 1000
+REF_LEVELS = {1: 10, 2: 5, 3: 2}  # Увеличены проценты
+REF_BONUS_NEURONS = 5000  # Больше бонус за реферала
 
 # Ежедневный бонус
-DAILY_BONUS = [100, 250, 500, 1000, 2000, 4000, 8000, 15000, 30000, 50000]
-
-# Рулетка
-ROULETTE_PRIZES = [
-    ("💰 100 нейронов",   100,    30),
-    ("💰 500 нейронов",   500,    25),
-    ("💰 1000 нейронов",  1000,   20),
-    ("💰 5000 нейронов",  5000,   12),
-    ("💎 15000 нейронов", 15000,  7),
-    ("🚀 50000 нейронов", 50000,  4),
-    ("❌ Ничего",         0,      2)
-]
+DAILY_BONUS = [500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000]
 
 # ============================================================
 # БАЗА ДАННЫХ
@@ -97,7 +84,7 @@ async def init_db():
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 first_name TEXT,
-                neurons INTEGER DEFAULT 500,
+                neurons INTEGER DEFAULT 1000,
                 total_deposited REAL DEFAULT 0,
                 total_withdrawn REAL DEFAULT 0,
                 total_earned INTEGER DEFAULT 0,
@@ -105,25 +92,21 @@ async def init_db():
                 referrer_id INTEGER,
                 reg_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_bonus_date TEXT,
-                bonus_streak INTEGER DEFAULT 0,
-                premium INTEGER DEFAULT 0,
-                roulette_streak INTEGER DEFAULT 0
+                bonus_streak INTEGER DEFAULT 0
             )
         ''')
         await db.execute('''
             CREATE TABLE IF NOT EXISTS user_servers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
-                server_type TEXT,
-                purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                server_type TEXT
             )
         ''')
         await db.execute('''
             CREATE TABLE IF NOT EXISTS user_employees (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
-                emp_type TEXT,
-                purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                emp_type TEXT
             )
         ''')
         await db.execute('''
@@ -183,10 +166,12 @@ async def add_user(user_id, username, first_name, referrer_id=None):
                 (user_id, username or "", first_name or "Игрок", referrer_id)
             )
             if referrer_id and referrer_id != user_id:
+                # Бонус рефереру
                 await db.execute(
                     "UPDATE users SET neurons = neurons + ? WHERE user_id = ?",
                     (REF_BONUS_NEURONS, referrer_id)
                 )
+                # Записываем связи
                 cur2 = await db.execute("SELECT referrer_id FROM users WHERE user_id = ?", (referrer_id,))
                 ref2 = await cur2.fetchone()
                 if ref2 and ref2[0]:
@@ -291,7 +276,7 @@ async def get_total_stats():
 # БОТ
 # ============================================================
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 pending_payments = {}
@@ -304,32 +289,31 @@ WELCOME = """🧠 <b>Добро пожаловать в AutoGram AI!</b>
 
 <b>Здесь ты можешь зарабатывать реальные деньги!</b> 💰
 
-🚀 Что тебя ждёт:
-• Строй собственную AI-империю
-• Покупай серверы — они приносят доход КАЖДУЮ минуту
-• Нанимай крутых сотрудников — множат твой доход
-• Приглашай друзей — получай <b>7%</b> от их пополнений
-• Выводи реальные рубли на карту любого банка РФ
+🚀 <b>Как зарабатывать:</b>
+• 💰 Пополни баланс от 1000₽
+• 🖥 Купи серверы — они приносят доход КАЖДУЮ минуту
+• 👨‍💻 Нанимай сотрудников — множат доход
+• ⚡ Покупай улучшения — буст навсегда
+• 🤝 Приглашай друзей — получай <b>10%</b> от их пополнений
+• 💸 Выводи реальные рубли от 3000₽
 
-💸 <b>Выплаты происходят вручную администратором</b> в течение 24 часов.
-Минимальная сумма вывода: <b>100₽</b>
+💸 <b>Выплаты в течение 24 часов</b> на карту любого банка РФ
 
-🎁 Стартовый бонус: <b>500 нейронов</b> уже на твоём счету!
+🎁 Стартовый бонус: <b>1 000 нейронов</b>!
 
-👇 Нажми кнопку ниже, чтобы начать зарабатывать:"""
+👇 Нажми кнопку, чтобы начать:"""
 
-MAIN_MENU = """🧠 <b>AutoGram AI</b> — твоя нейросеть приносит деньги
+MAIN_MENU = """🧠 <b>AutoGram AI</b>
 
 💰 <b>Баланс:</b> {neurons:,} нейронов ({rubles}₽)
-📈 <b>Доход:</b> {income_per_min}/мин · {income_per_hour}/час · {income_per_day}/день
+📈 <b>Доход:</b> {income_per_min:,}/мин · {income_per_hour:,}/час · {income_per_day:,}/день
 ⚡ <b>Множитель:</b> x{total_multiplier:.2f}
 
-👥 <b>Рефералы:</b> {refs_1}·{refs_2}·{refs_3} (1·2·3 уровни)
+👥 <b>Рефералы:</b> {refs_1}·{refs_2}·{refs_3}
 🔥 <b>Streak:</b> {streak} дней
 
-🛒 <b>Магазин мотивирует:</b>
-💡 «Серверы окупаются за 100 минут и работают вечно!»
-💡 «Купи сотрудника x5 и удвой доход!»
+💎 <b>Совет:</b> Чем больше тариф — тем выше множитель!
+🚀 <b>При пополнении от 30 000₽</b> — VIP статус и +33% бонус!
 
 Выбирай действие 👇"""
 
@@ -347,29 +331,27 @@ PROFILE = """👤 <b>Твой профиль</b>
 🤝 <b>Твоя реферальная ссылка:</b>
 <code>https://t.me/{bot_username}?start={user_id}</code>
 
-💸 <b>Приглашай друзей и получай:</b>
-• 1 уровень — <b>7%</b> от их пополнений
-• 2 уровень — <b>3%</b>
-• 3 уровень — <b>1%</b>
-+ <b>1 000 нейронов</b> за каждого друга сразу!"""
+💸 <b>Зарабатывай с нами:</b>
+• 1 уровень — <b>10%</b> от пополнений
+• 2 уровень — <b>5%</b>
+• 3 уровень — <b>2%</b>
++ <b>5 000 нейронов</b> за каждого друга!"""
 
 # ============================================================
 # КЛАВИАТУРЫ
 # ============================================================
 def main_menu_kb():
     return types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="⛏ МАЙНИТЬ НЕЙРОНЫ (+10🧠)", callback_data="mine")],
-        [types.InlineKeyboardButton(text="🖥 Магазин серверов", callback_data="shop_servers"),
-         types.InlineKeyboardButton(text="👨‍💻 Сотрудники", callback_data="shop_employees")],
-        [types.InlineKeyboardButton(text="⚡ Улучшения (БУСТ)", callback_data="shop_upgrades")],
-        [types.InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="deposit"),
+        [types.InlineKeyboardButton(text="🖥 МАГАЗИН СЕРВЕРОВ", callback_data="shop_servers")],
+        [types.InlineKeyboardButton(text="👨‍💻 СОТРУДНИКИ (множители)", callback_data="shop_employees")],
+        [types.InlineKeyboardButton(text="⚡ УЛУЧШЕНИЯ (буст навсегда)", callback_data="shop_upgrades")],
+        [types.InlineKeyboardButton(text="💰 ПОПОЛНИТЬ БАЛАНС", callback_data="deposit"),
          types.InlineKeyboardButton(text="💸 ВЫВЕСТИ ДЕНЬГИ", callback_data="withdraw")],
         [types.InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
          types.InlineKeyboardButton(text="🏆 Рейтинг ТОП", callback_data="top")],
         [types.InlineKeyboardButton(text="🎁 Ежедневный бонус", callback_data="daily"),
-         types.InlineKeyboardButton(text="🎰 Рулетка", callback_data="roulette")],
-        [types.InlineKeyboardButton(text="🤝 Рефералы", callback_data="referrals"),
-         types.InlineKeyboardButton(text="📊 Статистика", callback_data="stats")]
+         types.InlineKeyboardButton(text="🤝 Рефералы", callback_data="referrals")],
+        [types.InlineKeyboardButton(text="📊 Статистика", callback_data="stats")]
     ])
 
 def back_kb():
@@ -382,7 +364,7 @@ def servers_shop_kb(user_balance):
     for key, srv in SERVERS.items():
         can_buy = "✅" if user_balance >= srv["price"] else "🔒"
         buttons.append([types.InlineKeyboardButton(
-            text=f"{can_buy} {srv['icon']} {srv['name']} — {srv['price']:,} 🧠 ({srv['income']}/мин)",
+            text=f"{can_buy} {srv['icon']} {srv['name']} — {srv['price']:,} 🧠 ({srv['income']:,}/мин)",
             callback_data=f"buy_srv_{key}"
         )])
     buttons.append([types.InlineKeyboardButton(text="◀️ В меню", callback_data="menu")])
@@ -410,7 +392,7 @@ def upgrades_shop_kb(user_balance, owned):
             )])
         else:
             buttons.append([types.InlineKeyboardButton(
-                text=f"✅ КУПЛЕНО: {upg['name']} — {upg['desc']}",
+                text=f"✅ КУПЛЕНО: {upg['name']}",
                 callback_data="noop"
             )])
     buttons.append([types.InlineKeyboardButton(text="◀️ В меню", callback_data="menu")])
@@ -419,9 +401,10 @@ def upgrades_shop_kb(user_balance, owned):
 def deposit_kb():
     buttons = []
     for amount, pkg in DEPOSIT_PACKAGES.items():
+        total = pkg["neurons"] + pkg["bonus"]
         bonus_text = f" +{pkg['bonus']:,}🧠 БОНУС" if pkg['bonus'] > 0 else ""
         buttons.append([types.InlineKeyboardButton(
-            text=f"💳 {pkg['label']} — {amount}₽ ({pkg['neurons']:,}🧠{bonus_text})",
+            text=f"💎 {pkg['label']} — {amount}₽ ({total:,}🧠{bonus_text})",
             callback_data=f"dep_{amount}"
         )])
     buttons.append([types.InlineKeyboardButton(text="💬 Другая сумма", callback_data="dep_custom")])
@@ -488,40 +471,36 @@ async def profile_callback(callback: types.CallbackQuery):
     await callback.message.edit_text(text, reply_markup=back_kb())
     await callback.answer()
 
-@dp.callback_query(F.data == "mine")
-async def mine_callback(callback: types.CallbackQuery):
-    user = await get_user(callback.from_user.id)
-    streak = user[11] or 0
-    bonus = min(streak * 2, 50)
-    reward = 10 + bonus
-    
-    await update_balance(callback.from_user.id, reward)
-    
-    phrases = [
-        f"⛏ Данные обработаны! +{reward} 🧠",
-        f"⚡ Нейроны добыты! +{reward} 🧠",
-        f"🧠 AI обучается! +{reward} 🧠",
-        f"💎 Кристалл данных! +{reward} 🧠",
-        f"🚀 Мегамайнинг! +{reward} 🧠"
-    ]
-    await callback.answer(random.choice(phrases), show_alert=False)
-
 @dp.callback_query(F.data == "shop_servers")
 async def shop_servers(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
     income_per_min, income_per_hour, income_per_day = await calculate_income(callback.from_user.id)
     servers = await get_user_servers(callback.from_user.id)
     
-    text = f"""🖥 <b>Магазин серверов</b>
+    text = f"""🖥 <b>МАГАЗИН СЕРВЕРОВ</b>
 
 💰 Твой баланс: <b>{user[3]:,}</b> 🧠
-📈 Текущий доход: <b>{income_per_min:,}/мин</b>
+📈 Текущий доход: <b>{income_per_min:,}/мин</b> ({income_per_hour:,}/час)
 
-💡 <b>Почему стоит покупать?</b>
-• Серверы окупаются за 100 минут работы
-• Доход начисляется КАЖДУЮ минуту
-• Работают 24/7 без твоего участия
-• Чем больше серверов — тем больше прибыль
+💎 <b>Почему нужно покупать серверы:</b>
+
+🔥 <b>🍓 Raspberry Pi</b> за 5 000 🧠:
+   • Приносит 80 🧠/мин
+   • За сутки: <b>115 200 🧠</b> = 1 152₽
+   • <b>Окупаемость: 1 час!</b>
+
+🔥 <b>💻 Игровой ноутбук</b> за 50 000 🧠:
+   • Приносит 900 🧠/мин
+   • За сутки: <b>1 296 000 🧠</b> = 12 960₽
+   • <b>Окупаемость: 1 час!</b>
+
+🔥 <b>🖥 Игровой ПК</b> за 500 000 🧠:
+   • Приносит 10 000 🧠/мин
+   • За сутки: <b>14 400 000 🧠</b> = 144 000₽
+   • <b>Окупаемость: 50 минут!</b>
+
+⚡ <b>Купи несколько — доход суммируется!</b>
+🚀 <b>Совет:</b> начни с Raspberry Pi, докупай каждый час!
 
 🔥 <b>Твои серверы:</b> {sum(servers.values()) if servers else 0} шт.
 
@@ -552,38 +531,37 @@ async def buy_server(callback: types.CallbackQuery):
         )
         await db.commit()
     
-    income_per_min, _, _ = await calculate_income(callback.from_user.id)
+    income_per_min, income_per_hour, _ = await calculate_income(callback.from_user.id)
     await callback.answer(
-        f"✅ {srv['name']} куплен!\n📈 Новый доход: {income_per_min:,}/мин", 
+        f"✅ {srv['name']} куплен!\n📈 Новый доход: {income_per_min:,}/мин ({income_per_hour:,}/час)", 
         show_alert=True
     )
-    
-    user = await get_user(callback.from_user.id)
-    servers = await get_user_servers(callback.from_user.id)
-    text = f"""🖥 <b>Магазин серверов</b>
-
-💰 Твой баланс: <b>{user[3]:,}</b> 🧠
-📈 Текущий доход: <b>{income_per_min:,}/мин</b>
-
-🔥 <b>Твои серверы:</b> {sum(servers.values())} шт.
-
-✅ Куплено: {srv['name']}!"""
-    await callback.message.edit_text(text, reply_markup=servers_shop_kb(user[3]))
 
 @dp.callback_query(F.data == "shop_employees")
 async def shop_employees(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
     employees = await get_user_employees(callback.from_user.id)
     
-    text = f"""👨‍💻 <b>Кадровое агентство AI</b>
+    text = f"""👨‍💻 <b>КАДРОВОЕ АГЕНТСТВО</b>
 
 💰 Твой баланс: <b>{user[3]:,}</b> 🧠
 
-💡 <b>Зачем нанимать сотрудников?</b>
-• Они УМНОЖАЮТ доход от серверов
-• Работают постоянно
-• Окупаются за считанные минуты
-• Можно нанять несколько одинаковых!
+💎 <b>Зачем нанимать сотрудников?</b>
+
+• Они <b>УМНОЖАЮТ</b> доход от серверов
+• Один Senior умножает доход в 3 раза!
+• Два Senior — в 9 раз!
+• Работают 24/7 без выходных
+• Окупаются за минуты
+
+🔥 <b>Примеры:</b>
+• Junior (x1.5) — доход +50%
+• Middle (x2) — доход x2
+• Senior (x3) — доход x3
+• CTO (x10) — доход x10 🔥
+
+⚡ <b>Можно нанимать несколько!</b>
+⚡ <b>Все множители перемножаются!</b>
 
 🔥 <b>Твоя команда:</b> {sum(employees.values()) if employees else 0} чел.
 
@@ -615,7 +593,7 @@ async def buy_employee(callback: types.CallbackQuery):
     
     income_per_min, _, _ = await calculate_income(callback.from_user.id)
     await callback.answer(
-        f"✅ {emp['name']} нанят!\n📈 Доход x{emp['multiplier']}!\n💵 Теперь: {income_per_min:,}/мин", 
+        f"✅ {emp['name']} нанят!\n📈 Множитель: x{emp['multiplier']}\n💵 Новый доход: {income_per_min:,}/мин", 
         show_alert=True
     )
 
@@ -624,15 +602,24 @@ async def shop_upgrades(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
     owned = await get_user_upgrades(callback.from_user.id)
     
-    text = f"""⚡ <b>Улучшения императора</b>
+    text = f"""⚡ <b>УЛУЧШЕНИЯ ИМПЕРИИ</b>
 
 💰 Твой баланс: <b>{user[3]:,}</b> 🧠
 
-💡 <b>Что дают улучшения?</b>
-• Постоянный буст к доходу НАВСЕГДА
+💎 <b>Лучшая инвестиция в игре!</b>
+
+• Постоянный буст к доходу <b>НАВСЕГДА</b>
 • Не нужно обслуживать
-• Складываются с другими бонусами
-• Лучшая инвестиция в игре!
+• Складываются с множителями сотрудников
+• Покупаешь один раз — работает вечно
+
+🔥 <b>Доступные улучшения:</b>
+❄️ Система охлаждения — +20% к доходу
+🌐 Оптимизация сети — +30% к доходу
+⚛️ Квантовая оптимизация — +50% к доходу
+🧠 Нейроинтерфейс — +100% к доходу!
+
+⚡ <b>Все улучшения перемножаются!</b>
 
 Выбирай улучшение:"""
     
@@ -669,21 +656,29 @@ async def buy_upgrade(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "deposit")
 async def deposit_callback(callback: types.CallbackQuery):
-    text = f"""💰 <b>Пополнение баланса</b>
+    text = f"""💰 <b>ПОПОЛНЕНИЕ БАЛАНСА</b>
 
-Курс: <b>1₽ = {NEURONS_PER_RUB} нейронов</b>
+💎 <b>Курс:</b> 1₽ = {NEURONS_PER_RUB} нейронов
 
-💎 <b>Выбери тариф — чем больше, тем выгоднее!</b>
+🚀 <b>ВЫБЕРИ ТАРИФ — чем больше, тем выгоднее:</b>
 
-🔥 При пополнении от 500₽ — бонусные нейроны!
-💎 При пополнении от 3000₽ — до +20% бонус!
-🚀 При пополнении от 10000₽ — статус VIP!
+💎 <b>1000₽</b> — 80 000 🧠 (старт)
+💎 <b>3000₽</b> — 300 000 🧠 +30 000 БОНУС
+💎 <b>5000₽</b> — 600 000 🧠 +100 000 БОНУС
+💎 <b>10000₽</b> — 1 400 000 🧠 +300 000 БОНУС
+🔥 <b>30000₽</b> — 4 800 000 🧠 +1 200 000 БОНУС + VIP
+🔥 <b>50000₽</b> — 9 000 000 🧠 +2 500 000 БОНУС + Premium
+🔥 <b>100000₽</b> — 22 000 000 🧠 +7 000 000 БОНУС + Premium+
 
-⚡ <b>Зачем пополнять?</b>
+💎 <b>Примеры дохода:</b>
+• Купи 1 сервер «Игровой ПК» (500 000 🧠) → доход 10 000/мин
+• Это <b>600 000 🧠/час</b> = 6 000₽/час
+• За сутки: <b>144 000₽</b> 💰
+
+⚡ <b>Зачем пополнять больше?</b>
 • Серверы приносят доход 24/7
-• За 1 час работы сервера ты получаешь до 60₽ чистыми
-• 100% окупаемость за 1.5 часа
 • Реальные деньги на карту
+• Окупаемость от 1 часа
 
 Выбирай тариф:"""
     
@@ -695,26 +690,28 @@ async def deposit_amount(callback: types.CallbackQuery):
     if callback.data == "dep_custom":
         await callback.message.edit_text(
             "💬 <b>Введи свою сумму:</b>\n\n"
-            "Отправь сообщение с суммой в рублях (от 50₽).\n"
+            "Отправь сообщение с суммой в рублях (от 1000₽).\n"
             "Пример: <code>2500</code>",
             reply_markup=back_kb()
         )
         pending_payments[callback.from_user.id] = {"waiting": "custom_amount"}
+        await callback.answer()
         return
     
-    amount = int(callback.data.split("_")[1])
-    pkg = DEPOSIT_PACKAGES.get(str(amount))
+    amount_str = callback.data.split("_")[1]
+    if not amount_str.isdigit():
+        return
+    
+    amount = int(amount_str)
+    pkg = DEPOSIT_PACKAGES.get(amount_str)
     if not pkg:
+        await callback.answer("❌ Неверный тариф", show_alert=True)
         return
     
-    label = f"dep_{callback.from_user.id}_{uuid.uuid4().hex[:10]}"
-    pending_payments[label] = {
-        "user_id": callback.from_user.id,
-        "amount": amount,
-        "neurons": pkg["neurons"],
-        "bonus": pkg["bonus"]
-    }
+    # Генерируем уникальный label
+    label = f"autogr_{uuid.uuid4().hex[:12]}"
     
+    # Сохраняем в БД
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO deposits (user_id, amount_rub, neurons_amount, label) VALUES (?, ?, ?, ?)",
@@ -722,33 +719,55 @@ async def deposit_amount(callback: types.CallbackQuery):
         )
         await db.commit()
     
-    pay_url = f"https://yoomoney.ru/transfer?quickpay=shop&receiver={YOOMONEY_WALLET}&sum={amount}&label={label}"
+    pending_payments[label] = {
+        "user_id": callback.from_user.id,
+        "amount": amount,
+        "neurons": pkg["neurons"],
+        "bonus": pkg["bonus"]
+    }
     
-    bonus_text = f"\n🎁 <b>Бонус:</b> +{pkg['bonus']:,} 🧠" if pkg["bonus"] > 0 else ""
+    # Формируем ссылку на оплату ЮMoney
+    pay_url = (
+        f"https://yoomoney.ru/transfer?"
+        f"quickpay=shop&"
+        f"receiver={YOOMONEY_WALLET}&"
+        f"sum={amount}&"
+        f"label={label}"
+    )
+    
     total_neurons = pkg["neurons"] + pkg["bonus"]
+    bonus_text = f"\n🎁 <b>Бонус:</b> +{pkg['bonus']:,} 🧠" if pkg["bonus"] > 0 else ""
     
-    text = f"""💳 <b>Оплата {amount}₽</b> ({pkg['label']})
+    text = f"""💳 <b>ОПЛАТА {amount}₽</b> — {pkg['label']}
 
-К зачислению: <b>{total_neurons:,} 🧠</b>{bonus_text}
+📦 <b>К зачислению:</b> {total_neurons:,} 🧠{bonus_text}
 
-💡 <b>При пополнении {amount}₽ ты получишь {total_neurons:,} нейронов.</b>
-Сможешь купить серверы и начать зарабатывать!
+💳 <b>Реквизиты для оплаты:</b>
+   💎 Кошелёк: <code>{YOOMONEY_WALLET}</code>
+   💰 Сумма: <b>{amount}₽</b>
+   📝 Комментарий: <code>{label}</code>
 
-📲 <b>Инструкция:</b>
-1. Нажми кнопку «Оплатить»
-2. Оплати удобным способом
-3. Вернись сюда и нажми «Проверить оплату»
-4. Нейроны зачислятся автоматически
+📲 <b>Как оплатить:</b>
 
-⏱ Оплата действительна 30 минут"""
+<b>Способ 1 (быстрый):</b>
+👇 Нажми кнопку «Оплатить» ниже
+
+<b>Способ 2 (вручную):</b>
+1. Открой <a href="https://yoomoney.ru/transfer">yoomoney.ru/transfer</a>
+2. Введи кошелёк: <code>{YOOMONEY_WALLET}</code>
+3. Сумма: <b>{amount}₽</b>
+4. В комментарии укажи: <code>{label}</code>
+5. Нажми «Проверить оплату» в боте
+
+⏱ <b>Оплата действительна 30 минут</b>"""
     
     kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="💳 Оплатить", url=pay_url)],
+        [types.InlineKeyboardButton(text=f"💳 Оплатить {amount}₽", url=pay_url)],
         [types.InlineKeyboardButton(text="✅ Проверить оплату", callback_data=f"check_{label}")],
         [types.InlineKeyboardButton(text="❌ Отменить", callback_data=f"cancel_{label}")],
         [types.InlineKeyboardButton(text="◀️ В меню", callback_data="menu")]
     ])
-    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.message.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("check_"))
@@ -756,7 +775,7 @@ async def check_payment(callback: types.CallbackQuery):
     label = callback.data.replace("check_", "")
     
     if label not in pending_payments:
-        await callback.answer("⏳ Оплата не найдена. Если вы оплатили — подождите 1-2 минуты.", show_alert=True)
+        await callback.answer("⏳ Платёж не найден или уже обработан. Подожди 1-2 минуты.", show_alert=True)
         return
     
     payment = pending_payments[label]
@@ -766,8 +785,10 @@ async def check_payment(callback: types.CallbackQuery):
         client = Client(YOOMONEY_TOKEN)
         history = client.operation_history(label=label)
         
+        found = False
         for op in history.operations:
             if op.status == "success":
+                found = True
                 total_neurons = payment["neurons"] + payment["bonus"]
                 await update_balance(payment["user_id"], total_neurons)
                 
@@ -781,6 +802,7 @@ async def check_payment(callback: types.CallbackQuery):
                         (label,)
                     )
                     
+                    # Реферальный бонус
                     cur = await db.execute("SELECT referrer_id FROM users WHERE user_id = ?", (payment["user_id"],))
                     row = await cur.fetchone()
                     if row and row[0]:
@@ -806,14 +828,20 @@ async def check_payment(callback: types.CallbackQuery):
                 await show_main_menu(callback.message, callback.from_user.id, edit=True)
                 return
         
-        await callback.answer("⏳ Оплата ещё не поступила. Подожди 30 секунд.", show_alert=True)
+        if not found:
+            await callback.answer("⏳ Оплата ещё не поступила. Подожди 30-60 секунд и попробуй ещё раз.", show_alert=True)
     except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)[:50]}", show_alert=True)
+        await callback.answer(f"❌ Ошибка проверки: {str(e)[:100]}", show_alert=True)
 
 @dp.callback_query(F.data.startswith("cancel_"))
 async def cancel_payment(callback: types.CallbackQuery):
     label = callback.data.replace("cancel_", "")
     pending_payments.pop(label, None)
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE deposits SET status = 'cancelled' WHERE label = ?", (label,))
+        await db.commit()
+    
     await callback.answer("❌ Платёж отменён", show_alert=False)
     await show_main_menu(callback.message, callback.from_user.id, edit=True)
 
@@ -826,30 +854,41 @@ async def withdraw_callback(callback: types.CallbackQuery):
     net_rub = gross_rub - fee
     
     if gross_rub < MIN_WITHDRAW_RUB:
+        needed = MIN_WITHDRAW_RUB - gross_rub
         await callback.message.edit_text(
-            f"💸 <b>Вывод средств</b>\n\n"
+            f"💸 <b>ВЫВОД СРЕДСТВ</b>\n\n"
             f"💰 Доступно: <b>{gross_rub}₽</b> ({neurons:,} 🧠)\n"
             f"❌ Минимальная сумма вывода: <b>{MIN_WITHDRAW_RUB}₽</b>\n\n"
-            f"📊 Нужно ещё: <b>{MIN_WITHDRAW_RUB - gross_rub}₽</b>\n\n"
-            f"💡 Пополни баланс или заработай майнингом!",
+            f"📊 Нужно ещё: <b>{needed}₽</b>\n\n"
+            f"💎 <b>Совет:</b> Купи серверы и заработай!\n"
+            f"🍓 Raspberry Pi приносит 80 🧠/мин = 4 800₽/час\n\n"
+            f"🚀 Или пополни баланс и крути оборот!",
             reply_markup=back_kb()
         )
     else:
-        text = f"""💸 <b>Вывод средств</b>
+        text = f"""💸 <b>ВЫВОД СРЕДСТВ</b>
 
 💰 На балансе: <b>{neurons:,} нейронов</b>
+💵 Это эквивалент: <b>{gross_rub}₽</b>
 
-Это эквивалент <b>{gross_rub}₽</b>.
-
-Комиссия сервиса ({WITHDRAW_FEE_PERCENT}%): <b>{fee}₽</b>
-К выплате: <b>{net_rub}₽</b>
+━━━━━━━━━━━━━━━━━━━━
+💎 <b>РАСЧЁТ ВЫПЛАТЫ:</b>
+   Сумма: <b>{gross_rub}₽</b>
+   Комиссия ({WITHDRAW_FEE_PERCENT}%): <b>{fee}₽</b>
+   ━━━━━━━━━━━━━━━━━━━
+   💸 <b>К выплате: {net_rub}₽</b>
+━━━━━━━━━━━━━━━━━━━━
 
 ❓ <b>Хотите вывести эти средства?</b>
 
-Выплата производится администратором <b>вручную в течение 24 часов</b> на карту любого банка РФ."""
+💳 Выплата на карту любого банка РФ
+⏱ Срок: <b>до 24 часов</b> (вручную администратором)
+🔒 Безопасно и надёжно
+
+Нажми «ДА» для продолжения:"""
         
         kb = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="✅ ДА, ХОЧУ ВЫВЕСТИ", callback_data="withdraw_confirm")],
+            [types.InlineKeyboardButton(text=f"✅ ДА, ВЫВЕСТИ {net_rub}₽", callback_data="withdraw_confirm")],
             [types.InlineKeyboardButton(text="◀️ Отмена", callback_data="menu")]
         ])
         await callback.message.edit_text(text, reply_markup=kb)
@@ -859,9 +898,13 @@ async def withdraw_callback(callback: types.CallbackQuery):
 async def withdraw_confirm(callback: types.CallbackQuery):
     pending_withdrawals[callback.from_user.id] = {"step": "wallet"}
     await callback.message.edit_text(
-        "💳 <b>Введи номер карты или кошелька для перевода:</b>\n\n"
-        "Пример: <code>2200123456789012</code>\n"
-        "или ЮMoney: <code>4100118935779591</code>",
+        "💳 <b>Шаг 1/2: Введи номер карты или кошелька</b>\n\n"
+        "💎 Форматы:\n"
+        "• Банковская карта: <code>2200123456789012</code>\n"
+        "• ЮMoney: <code>4100118935779591</code>\n"
+        "• Телефон (СБП): <code>+79991234567</code>\n\n"
+        "⚠️ <b>Внимательно проверь номер!</b>\n"
+        "Деньги отправим именно сюда.",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [types.InlineKeyboardButton(text="◀️ Отмена", callback_data="menu")]
         ])
@@ -869,23 +912,20 @@ async def withdraw_confirm(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.message()
-async def handle_withdraw_input(message: types.Message):
+async def handle_text_input(message: types.Message):
     user_id = message.from_user.id
     
+    # Кастомная сумма пополнения
     if user_id in pending_payments and pending_payments[user_id].get("waiting") == "custom_amount":
         try:
             amount = int(message.text)
-            if amount < 50:
-                await message.answer("❌ Минимум 50₽")
+            if amount < 1000:
+                await message.answer("❌ Минимальная сумма пополнения: <b>1000₽</b>")
                 return
-            neurons = int(amount * NEURONS_PER_RUB * 0.9)
-            label = f"dep_{user_id}_{uuid.uuid4().hex[:10]}"
-            pending_payments[label] = {
-                "user_id": user_id,
-                "amount": amount,
-                "neurons": neurons,
-                "bonus": 0
-            }
+            
+            neurons = int(amount * NEURONS_PER_RUB * 0.85)
+            label = f"autogr_{uuid.uuid4().hex[:12]}"
+            
             async with aiosqlite.connect(DB_PATH) as db:
                 await db.execute(
                     "INSERT INTO deposits (user_id, amount_rub, neurons_amount, label) VALUES (?, ?, ?, ?)",
@@ -893,36 +933,53 @@ async def handle_withdraw_input(message: types.Message):
                 )
                 await db.commit()
             
+            pending_payments[label] = {
+                "user_id": user_id, "amount": amount, "neurons": neurons, "bonus": 0
+            }
+            
             pay_url = f"https://yoomoney.ru/transfer?quickpay=shop&receiver={YOOMONEY_WALLET}&sum={amount}&label={label}"
             kb = types.InlineKeyboardMarkup(inline_keyboard=[
-                [types.InlineKeyboardButton(text="💳 Оплатить", url=pay_url)],
+                [types.InlineKeyboardButton(text=f"💳 Оплатить {amount}₽", url=pay_url)],
                 [types.InlineKeyboardButton(text="✅ Проверить", callback_data=f"check_{label}")],
                 [types.InlineKeyboardButton(text="◀️ В меню", callback_data="menu")]
             ])
             await message.answer(
-                f"💳 Оплата <b>{amount}₽</b>\nК зачислению: <b>{neurons:,} 🧠</b>",
+                f"💳 <b>Оплата {amount}₽</b>\n\n"
+                f"💎 Кошелёк: <code>{YOOMONEY_WALLET}</code>\n"
+                f"📝 Комментарий: <code>{label}</code>\n\n"
+                f"К зачислению: <b>{neurons:,} 🧠</b>",
                 reply_markup=kb
             )
             pending_payments.pop(user_id, None)
         except ValueError:
-            await message.answer("❌ Введи число")
+            await message.answer("❌ Введи целое число")
         return
     
+    # Ввод реквизитов для вывода
     if user_id in pending_withdrawals:
         data = pending_withdrawals[user_id]
         if data["step"] == "wallet":
-            data["wallet"] = message.text.strip()
+            wallet = message.text.strip()
+            if len(wallet) < 10:
+                await message.answer("❌ Слишком короткий номер. Попробуй ещё раз:")
+                return
+            data["wallet"] = wallet
             data["step"] = "bank"
             await message.answer(
-                f"💳 Карта/кошелёк: <code>{data['wallet']}</code>\n\n"
-                "🏦 <b>Теперь укажи название банка:</b>\n\n"
-                "Пример: <code>Сбербанк</code>, <code>Тинькофф</code>, <code>ЮMoney</code>",
+                f"💳 Карта/кошелёк: <code>{wallet}</code>\n\n"
+                "🏦 <b>Шаг 2/2: Укажи название банка</b>\n\n"
+                "Примеры:\n"
+                "• <code>Сбербанк</code>\n"
+                "• <code>Тинькофф</code>\n"
+                "• <code>Альфа-Банк</code>\n"
+                "• <code>ЮMoney</code>",
                 reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
                     [types.InlineKeyboardButton(text="◀️ Отмена", callback_data="menu")]
                 ])
             )
         elif data["step"] == "bank":
-            data["bank"] = message.text.strip()
+            bank = message.text.strip()
+            data["bank"] = bank
             
             user = await get_user(user_id)
             neurons = user[3]
@@ -944,6 +1001,7 @@ async def handle_withdraw_input(message: types.Message):
                 )
                 await db.commit()
             
+            # Уведомление админу
             try:
                 await bot.send_message(
                     ADMIN_ID,
@@ -951,23 +1009,26 @@ async def handle_withdraw_input(message: types.Message):
                     f"👤 Игрок: {user[2]} (@{user[1] or '—'})\n"
                     f"🆔 ID: <code>{user_id}</code>\n"
                     f"💰 Сумма к выплате: <b>{net_rub}₽</b>\n"
-                    f"💳 Карта/кошелёк: <code>{data['wallet']}</code>\n"
+                    f"💳 Кошелёк: <code>{data['wallet']}</code>\n"
                     f"🏦 Банк: {data['bank']}\n"
                     f"📅 Заявка: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-                    f"<b>Оплати вручную в течение 24 часов!</b>",
+                    f"<b>⚠️ Оплати вручную в течение 24 часов!</b>",
                     parse_mode="HTML"
                 )
             except:
                 pass
             
             await message.answer(
-                f"✅ <b>Заявка #{wid} создана!</b>\n\n"
-                f"💰 Сумма к выплате: <b>{net_rub}₽</b>\n"
-                f"💳 Карта: <code>{data['wallet']}</code>\n"
-                f"🏦 Банк: {data['bank']}\n\n"
-                f"⏱ <b>Выплата в течение 24 часов.</b>\n"
-                f"С твоего баланса списано: {(net_rub + fee) * NEURONS_PER_RUB:,} 🧠\n"
-                f"Комиссия {WITHDRAW_FEE_PERCENT}% ({fee}₽) удержана.",
+                f"✅ <b>ЗАЯВКА #{wid} СОЗДАНА!</b>\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💸 Сумма к выплате: <b>{net_rub}₽</b>\n"
+                f"💳 Кошелёк: <code>{data['wallet']}</code>\n"
+                f"🏦 Банк: {data['bank']}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"⏱ <b>Выплата в течение 24 часов</b>\n"
+                f"📞 Если что-то не так — напиши @username\n\n"
+                f"💎 Списано с баланса: {(net_rub + fee) * NEURONS_PER_RUB:,} 🧠\n"
+                f"💰 Комиссия {WITHDRAW_FEE_PERCENT}%: {fee}₽",
                 reply_markup=main_menu_kb()
             )
             pending_withdrawals.pop(user_id, None)
@@ -983,7 +1044,8 @@ async def daily_callback(callback: types.CallbackQuery):
     today = now.date().isoformat()
     
     if last_bonus_str == today:
-        await callback.answer("⏳ Бонус уже получен сегодня! Приходи завтра.", show_alert=True)
+        tomorrow = (now + timedelta(days=1)).strftime("%d.%m.%Y %H:%M")
+        await callback.answer(f"⏳ Бонус уже получен сегодня!\nСледующий доступен завтра в 00:00", show_alert=True)
         return
     
     new_streak = 1
@@ -1003,38 +1065,10 @@ async def daily_callback(callback: types.CallbackQuery):
         )
         await db.commit()
     
-    day_text = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
     await callback.answer(
-        f"🎁 {day_text[streak_idx]} День: +{bonus:,} 🧠\n🔥 Streak: {new_streak} дней!",
+        f"🎁 День {new_streak}: +{bonus:,} 🧠\n🔥 Streak: {new_streak} дней!\n💎 Завтра будет ещё больше!",
         show_alert=True
     )
-
-@dp.callback_query(F.data == "roulette")
-async def roulette_callback(callback: types.CallbackQuery):
-    user = await get_user(callback.from_user.id)
-    
-    if user[3] < 100:
-        await callback.answer("❌ Нужно минимум 100 нейронов для ставки!", show_alert=True)
-        return
-    
-    await update_balance(callback.from_user.id, -100)
-    
-    prizes = [p for p in ROULETTE_PRIZES]
-    weights = [p[2] for p in prizes]
-    prize = random.choices(prizes, weights=weights)[0]
-    
-    if prize[0] == "❌ Ничего":
-        text = f"🎰 <b>Рулетка</b>\n\n😔 К сожалению, ты ничего не выиграл.\nПопробуй ещё раз!"
-    else:
-        await update_balance(callback.from_user.id, prize[1])
-        text = f"🎰 <b>Рулетка</b>\n\n🎉 <b>ТЫ ВЫИГРАЛ!</b>\n\n{prize[0]}\n💰 Зачислено на баланс!"
-    
-    kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="🎰 Крутить ещё (100🧠)", callback_data="roulette")],
-        [types.InlineKeyboardButton(text="◀️ В меню", callback_data="menu")]
-    ])
-    await callback.message.edit_text(text, reply_markup=kb)
-    await callback.answer()
 
 @dp.callback_query(F.data == "referrals")
 async def referrals_callback(callback: types.CallbackQuery):
@@ -1042,25 +1076,31 @@ async def referrals_callback(callback: types.CallbackQuery):
     me = await bot.get_me()
     refs = await get_referrals_count(callback.from_user.id)
     
-    text = f"""🤝 <b>Реферальная система</b>
+    text = f"""🤝 <b>РЕФЕРАЛЬНАЯ СИСТЕМА</b>
 
 💰 <b>Твоя ссылка:</b>
 <code>https://t.me/{me.username}?start={callback.from_user.id}</code>
 
 📊 <b>Зарабатывай с нами:</b>
-• 1 уровень — <b>7%</b> от пополнений рефералов
-• 2 уровень — <b>3%</b>
-• 3 уровень — <b>1%</b>
-+ <b>1 000 🧠</b> за каждого приглашённого!
+
+🥇 1 уровень — <b>{REF_LEVELS[1]}%</b> от пополнений
+🥈 2 уровень — <b>{REF_LEVELS[2]}%</b>
+🥉 3 уровень — <b>{REF_LEVELS[3]}%</b>
+
++ <b>{REF_BONUS_NEURONS:,} 🧠</b> за каждого приглашённого!
 
 📈 <b>Твои рефералы:</b>
 • 1 уровень: <b>{refs.get(1, 0)}</b> чел.
 • 2 уровень: <b>{refs.get(2, 0)}</b> чел.
 • 3 уровень: <b>{refs.get(3, 0)}</b> чел.
 
-💡 <b>Пример:</b> Если твой реферал пополнит на 1000₽, ты получишь <b>7 000 🧠 (70₽)</b> моментально!
+💎 <b>Пример:</b>
+Твой реферал пополнил на 10 000₽
+Ты получаешь: <b>{REF_LEVELS[1]}% × 10 000₽ = {REF_LEVELS[1] * 100:,} 🧠 = {REF_LEVELS[1] * 100 // 100}₽</b> моментально!
 
-🔗 Поделись ссылкой с друзьями и зарабатывай!"""
+⚡ <b>Чем больше рефералов — тем больше доход!</b>
+
+🔗 Поделись ссылкой и зарабатывай пассивно!"""
     
     await callback.message.edit_text(text, reply_markup=back_kb())
     await callback.answer()
@@ -1069,7 +1109,6 @@ async def referrals_callback(callback: types.CallbackQuery):
 async def top_callback(callback: types.CallbackQuery):
     top = await get_top(10)
     user = await get_user(callback.from_user.id)
-    user_rank = "—"
     
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
@@ -1078,7 +1117,7 @@ async def top_callback(callback: types.CallbackQuery):
         )
         user_rank = (await cur.fetchone())[0]
     
-    text = f"🏆 <b>ТОП-10 игроков</b>\nТвоё место: <b>#{user_rank}</b>\n\n"
+    text = f"🏆 <b>ТОП-10 ИГРОКОВ</b>\nТвоё место: <b>#{user_rank}</b>\n\n"
     
     medals = ["🥇", "🥈", "🥉"]
     for i, (name, username, earned) in enumerate(top, 1):
@@ -1097,7 +1136,7 @@ async def stats_callback(callback: types.CallbackQuery):
     user = await get_user(callback.from_user.id)
     income_per_min, income_per_hour, income_per_day = await calculate_income(callback.from_user.id)
     
-    text = f"""📊 <b>Твоя статистика</b>
+    text = f"""📊 <b>ТВОЯ СТАТИСТИКА</b>
 
 💰 Баланс: <b>{user[3]:,}</b> 🧠
 📈 Доход/мин: <b>{income_per_min:,}</b> 🧠
@@ -1108,10 +1147,11 @@ async def stats_callback(callback: types.CallbackQuery):
 💸 Всего пополнено: <b>{user[4]:,}</b>₽
 💰 Всего выведено: <b>{user[5]:,}</b>₽
 
+━━━━━━━━━━━━━━━━━━━━
 🌐 <b>Глобальная статистика:</b>
-👥 Игроков онлайн: <b>{total_users}</b>
-💰 Всего нейронов в игре: <b>{total_neurons or 0:,}</b>
-💵 Всего пополнено: <b>{total_dep or 0:,}</b>₽"""
+👥 Игроков: <b>{total_users}</b>
+💰 Нейронов в игре: <b>{total_neurons or 0:,}</b>
+💵 Пополнено всего: <b>{total_dep or 0:,}</b>₽"""
     
     await callback.message.edit_text(text, reply_markup=back_kb())
     await callback.answer()
@@ -1155,6 +1195,9 @@ async def show_main_menu(message, user_id, edit=False):
     else:
         await message.answer(text, reply_markup=main_menu_kb())
 
+# ============================================================
+# ФОНОВЫЕ ЗАДАЧИ
+# ============================================================
 async def income_loop():
     while True:
         try:
@@ -1171,6 +1214,9 @@ async def income_loop():
         
         await asyncio.sleep(60)
 
+# ============================================================
+# ЗАПУСК
+# ============================================================
 async def main():
     await init_db()
     asyncio.create_task(income_loop())
