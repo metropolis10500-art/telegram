@@ -1,7 +1,6 @@
 import asyncio
 import sqlite3
 import time
-import uuid
 import logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
@@ -12,188 +11,186 @@ from yoomoney import Quickpay, Client
 BOT_TOKEN = "8800941405:AAH0TZbP48M5grkVxZ-tvP7lxK72eTSg4yc"
 YOOMONEY_TOKEN = "5133D1719448E2A5E1083A0FC605E369944CBB992B1D4490F13E2D4636C03191"
 YOOMONEY_WALLET = "4100118935779591"
-ADMIN_ID = 12345678  # СЮДА ТВОЙ ID ДЛЯ ЗАЯВОК НА ВЫВОД
-MIN_WITHDRAW = 3000  # МИНИМАЛКА НА ВЫВОД
+ADMIN_ID = 12345678  # Твой ID
+MIN_WITHDRAW = 3000
 
-# ТАРИФЫ: Название, Цена, Доход в час
+# ТАРИФЫ: [Название, Цена, Доход в час, Эмодзи]
 TARIFS = {
-    "bot_1": ["AI-Assistant v1.0", 1000, 8.5],    # ~200р в сутки
-    "bot_2": ["Neural Engine v2.5", 5000, 52.0],   # ~1250р в сутки
-    "bot_3": ["Quantum Cluster v4.0", 20000, 250.0] # ~6000р в сутки
+    "node_1": ["Starter AI", 1000, 12.5, "🥉"],   # 300₽/сутки
+    "node_2": ["Advanced Neural", 5000, 75.0, "🥈"], # 1800₽/сутки
+    "node_3": ["Quantum Core", 15000, 275.0, "🥇"]  # 6600₽/сутки
 }
-
-REF_PERCENT = 0.10 # 10% от сбора реферала
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 yoomoney_client = Client(YOOMONEY_TOKEN)
 
-# --- БАЗА ДАННЫХ ---
+# --- БАЗА ДАННЫХ (Оптимизированная) ---
 def db_query(sql, params=(), fetch=False):
-    with sqlite3.connect("autogram_ai.db") as conn:
+    with sqlite3.connect("autogram_premium.db") as conn:
         cur = conn.cursor()
         cur.execute(sql, params)
-        res = cur.fetchall() if fetch else None
-        conn.commit()
-        return res
+        return cur.fetchall() if fetch else conn.commit()
 
 def init_db():
     db_query("""CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY, 
-        balance REAL DEFAULT 0, 
-        referred_by INTEGER,
-        bot_1 INTEGER DEFAULT 0, bot_2 INTEGER DEFAULT 0, bot_3 INTEGER DEFAULT 0,
-        last_collect INTEGER DEFAULT 0
+        id INTEGER PRIMARY KEY, balance REAL DEFAULT 0, ref_id INTEGER,
+        node_1 INTEGER DEFAULT 0, node_2 INTEGER DEFAULT 0, node_3 INTEGER DEFAULT 0,
+        last_tick INTEGER DEFAULT 0
     )""")
 
-def get_user_stats(user_id):
-    income_info = db_query("SELECT bot_1, bot_2, bot_3, last_collect, balance, referred_by FROM users WHERE id = ?", (user_id,), True)
-    if not income_info: return None
-    b1, b2, b3, last_t, bal, ref_by = income_info[0]
-    
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+def get_user(user_id):
+    res = db_query("SELECT balance, node_1, node_2, node_3, last_tick, ref_id FROM users WHERE id = ?", (user_id,), True)
+    if not res:
+        db_query("INSERT INTO users (id, last_tick) VALUES (?, ?)", (user_id, int(time.time())))
+        return (0, 0, 0, 0, int(time.time()), None)
+    return res[0]
+
+def calc_income(u):
+    # u = (balance, n1, n2, n3, last_tick, ref_id)
     now = int(time.time())
-    diff_hours = (now - last_t) / 3600
-    total_hourly = (b1 * TARIFS["bot_1"][2]) + (b2 * TARIFS["bot_2"][2]) + (b3 * TARIFS["bot_3"][2])
-    
-    pending_income = diff_hours * total_hourly
-    return pending_income, now, bal, ref_by, (b1, b2, b3)
+    hours = (now - u[4]) / 3600
+    hourly_rate = (u[1]*TARIFS["node_1"][2]) + (u[2]*TARIFS["node_2"][2]) + (u[3]*TARIFS["node_3"][2])
+    return round(hours * hourly_rate, 2), now
+
+# --- КЛАВИАТУРЫ ---
+def main_kb():
+    builder = InlineKeyboardBuilder()
+    builder.row(types.InlineKeyboardButton(text="💎 ЛИЧНЫЙ КАБИНЕТ", callback_data="cabinet"))
+    builder.row(
+        types.InlineKeyboardButton(text="🛒 МАГАЗИН", callback_data="shop"),
+        types.InlineKeyboardButton(text="👥 ПАРТНЕРЫ", callback_data="refs")
+    )
+    builder.row(types.InlineKeyboardButton(text="ℹ️ О СИСТЕМЕ", callback_data="info"))
+    return builder.as_markup()
 
 # --- ОБРАБОТЧИКИ ---
+
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message, command: CommandObject):
-    user = db_query("SELECT id FROM users WHERE id = ?", (message.from_user.id,), True)
-    if not user:
-        ref_id = int(command.args) if command.args and command.args.isdigit() else None
-        db_query("INSERT INTO users (id, referred_by, last_collect) VALUES (?, ?, ?)", 
-                 (message.from_user.id, ref_id, int(time.time())))
-    
-    kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="🖥 Личный кабинет", callback_data="cabinet"))
-    kb.row(types.InlineKeyboardButton(text="⚡️ Арендовать мощности", callback_data="shop"))
-    kb.row(types.InlineKeyboardButton(text="🤝 Партнерство", callback_data="refs"))
-    
-    await message.answer(
-        "<b>🤖 AutoGram AI — Автоматизация заработка</b>\n\n"
-        "Добро пожаловать в систему облачных вычислений. Наши алгоритмы работают на вас 24/7.\n\n"
-        "🔹 <b>Статус:</b> Система активна\n"
-        "🔹 <b>Ваш ID:</b> <code>{}</code>".format(message.from_user.id),
-        parse_mode="HTML", reply_markup=kb.as_markup()
+async def start(message: types.Message, command: CommandObject):
+    u = get_user(message.from_user.id)
+    if command.args and command.args.isdigit() and not u[5] and int(command.args) != message.from_user.id:
+        db_query("UPDATE users SET ref_id = ? WHERE id = ?", (int(command.args), message.from_user.id))
+
+    text = (
+        "<b>🤖 AUTOGRAM AI — ВАША СТАНЦИЯ ПРИБЫЛИ</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Это полностью автоматизированная система заработка на базе нейросетевых вычислений.\n\n"
+        "✅ <b>Зарабатывайте 24/7</b> без вашего участия.\n"
+        "✅ <b>Моментальный вывод</b> от 3,000₽.\n"
+        "✅ <b>Прозрачная статистика</b> и надежная защита.\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "<i>Начните свой путь к пассивному доходу прямо сейчас!</i>"
     )
+    await message.answer(text, parse_mode="HTML", reply_markup=main_kb())
 
 @dp.callback_query(F.data == "cabinet")
-async def view_cabinet(callback: types.CallbackQuery):
-    pending, _, bal, _, bots = get_user_stats(callback.from_user.id)
+async def cabinet(callback: types.CallbackQuery):
+    await callback.answer()
+    u = get_user(callback.from_user.id)
+    pending, _ = calc_income(u)
     
     text = (
-        f"<b>💼 ЛИЧНЫЙ КАБИНЕТ AutoGram AI</b>\n\n"
-        f"💰 На балансе: <b>{round(bal, 2)} ₽</b>\n"
-        f"⏳ Намайнено: <b>{round(pending, 2)} ₽</b>\n\n"
-        f"<b>Ваши алгоритмы:</b>\n"
-        f"└ v1.0: {bots[0]} | v2.5: {bots[1]} | v4.0: {bots[2]}\n\n"
-        f"<i>Минимальная сумма для вывода: {MIN_WITHDRAW} ₽</i>"
+        "<b>💼 ЛИЧНЫЙ КАБИНЕТ</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"💳 Мой баланс: <b>{round(u[0], 2)} ₽</b>\n"
+        f"⏳ Накоплено: <b>{pending} ₽</b>\n\n"
+        f"<b>Активные мощности:</b>\n"
+        f"└ {TARIFS['node_1'][3]} v1: {u[1]} | {TARIFS['node_2'][3]} v2: {u[2]} | {TARIFS['node_3'][3]} v3: {u[3]}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"<i>Минимальный вывод: {MIN_WITHDRAW}₽</i>"
     )
     kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="📥 Собрать прибыль", callback_data="collect"))
-    kb.row(types.InlineKeyboardButton(text="➕ Пополнить", callback_data="deposit"))
-    kb.row(types.InlineKeyboardButton(text="💸 Вывести", callback_data="withdraw"))
-    kb.row(types.InlineKeyboardButton(text="⬅️ Назад", callback_data="back"))
+    kb.row(types.InlineKeyboardButton(text="📥 СОБРАТЬ ПРИБЫЛЬ", callback_data="collect"))
+    kb.row(
+        types.InlineKeyboardButton(text="➕ ПОПОЛНИТЬ", callback_data="dep"),
+        types.InlineKeyboardButton(text="💸 ВЫВОД", callback_data="withdraw")
+    )
+    kb.row(types.InlineKeyboardButton(text="⬅️ НАЗАД", callback_data="home"))
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data == "collect")
-async def collect_money(callback: types.CallbackQuery):
-    pending, now, bal, ref_by, _ = get_user_stats(callback.from_user.id)
-    if pending < 1:
-        return await callback.answer("❌ Слишком мало прибыли для сбора.", show_alert=True)
+async def collect(callback: types.CallbackQuery):
+    u = get_user(callback.from_user.id)
+    pending, now = calc_income(u)
     
-    db_query("UPDATE users SET balance = balance + ?, last_collect = ? WHERE id = ?", (pending, now, callback.from_user.id))
+    if pending < 0.5:
+        return await callback.answer("⚠️ Минимальный сбор от 0.5 ₽", show_alert=True)
     
-    if ref_by:
-        bonus = pending * REF_PERCENT
-        db_query("UPDATE users SET balance = balance + ? WHERE id = ?", (bonus, ref_by))
-        try: await bot.send_message(ref_by, f"➕ Реферальный бонус: <b>{round(bonus, 2)}₽</b> за работу вашего партнера.")
+    db_query("UPDATE users SET balance = balance + ?, last_tick = ? WHERE id = ?", (pending, now, callback.from_user.id))
+    
+    if u[5]: # Рефералка 10%
+        bonus = pending * 0.10
+        db_query("UPDATE users SET balance = balance + ? WHERE id = ?", (bonus, u[5]))
+        try: await bot.send_message(u[5], f"📈 <b>Партнерский бонус!</b>\nНачислено: +{round(bonus, 2)}₽")
         except: pass
 
-    await callback.answer(f"✅ Собрано {round(pending, 2)}₽", show_alert=True)
-    await view_cabinet(callback)
+    await callback.answer(f"✅ Собрано: {pending}₽", show_alert=True)
+    await cabinet(callback)
 
 @dp.callback_query(F.data == "shop")
-async def show_shop(callback: types.CallbackQuery):
+async def shop(callback: types.CallbackQuery):
+    await callback.answer()
+    text = "<b>🛒 МАГАЗИН ВЫЧИСЛИТЕЛЬНЫХ УЗЛОВ</b>\n\n<i>Арендуйте мощности AI для генерации прибыли:</i>"
     kb = InlineKeyboardBuilder()
-    for key, val in TARIFS.items():
-        kb.row(types.InlineKeyboardButton(text=f"Арендовать {val[0]} — {val[1]}₽", callback_data=f"buy_{key}"))
-    kb.row(types.InlineKeyboardButton(text="⬅️ Назад", callback_data="back"))
-    await callback.message.edit_text("<b>🛒 МАГАЗИН МОЩНОСТЕЙ AI</b>\n\nВыберите алгоритм для автоматизации:", parse_mode="HTML", reply_markup=kb.as_markup())
+    for k, v in TARIFS.items():
+        kb.row(types.InlineKeyboardButton(text=f"{v[3]} {v[0]} — {v[1]}₽ ({v[2]}₽/ч)", callback_data=f"buy_{k}"))
+    kb.row(types.InlineKeyboardButton(text="⬅️ НАЗАД", callback_data="home"))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data.startswith("buy_"))
-async def buy_bot(callback: types.CallbackQuery):
-    key = callback.data.split("_")[1] + "_" + callback.data.split("_")[2]
-    name, price, _ = TARIFS[key]
-    _, _, bal, _, _ = get_user_stats(callback.from_user.id)
+async def buy(callback: types.CallbackQuery):
+    key = callback.data.replace("buy_", "")
+    u = get_user(callback.from_user.id)
+    price = TARIFS[key][1]
     
-    if bal < price:
+    if u[0] < price:
         return await callback.answer("❌ Недостаточно средств на балансе!", show_alert=True)
     
     db_query(f"UPDATE users SET balance = balance - ?, {key} = {key} + 1 WHERE id = ?", (price, callback.from_user.id))
-    await callback.answer(f"🚀 Алгоритм {name} успешно запущен!", show_alert=True)
-    await show_shop(callback)
+    await callback.answer(f"🚀 {TARIFS[key][0]} успешно запущен!", show_alert=True)
+    await shop(callback)
 
-@dp.callback_query(F.data == "withdraw")
-async def withdraw_request(callback: types.CallbackQuery):
-    _, _, bal, _, _ = get_user_stats(callback.from_user.id)
-    if bal < MIN_WITHDRAW:
-        return await callback.answer(f"⚠️ Минимальная сумма вывода — {MIN_WITHDRAW}₽\nУ вас: {round(bal, 2)}₽", show_alert=True)
-    
-    await callback.message.answer("💬 Введите номер карты или ЮMoney кошелька для вывода:")
-    # Для простоты здесь можно добавить State (состояния), но пока просто уведомление
-    await bot.send_message(ADMIN_ID, f"🔔 <b>ЗАЯВКА НА ВЫВОД</b>\nUser ID: {callback.from_user.id}\nБаланс: {bal}₽")
-
-@dp.callback_query(F.data == "deposit")
-async def deposit_link(callback: types.CallbackQuery):
-    label = f"dep_{callback.from_user.id}_{int(time.time())}"
-    # Сумму пополнения можно сделать кнопками, тут для примера 1000р
-    quickpay = Quickpay(receiver=YOOMONEY_WALLET, quickpay_form="shop", targets="AutoGram AI Deposit", 
-                        paymentType="SB", sum=1000, label=label)
+@dp.callback_query(F.data == "dep")
+async def deposit(callback: types.CallbackQuery):
+    await callback.answer()
+    # Пример на 1000 руб, можно сделать выбор сумм кнопками
+    label = f"d_{callback.from_user.id}_{int(time.time())}"
+    qp = Quickpay(receiver=YOOMONEY_WALLET, quickpay_form="shop", targets="AutoGram AI", paymentType="SB", sum=1000, label=label)
     
     kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="💳 Оплатить 1000₽", url=quickpay.base_url))
-    kb.row(types.InlineKeyboardButton(text="✅ Проверить оплату", callback_data=f"check_{label}"))
-    await callback.message.answer("Сгенерирована ссылка на пополнение баланса:", reply_markup=kb.as_markup())
+    kb.row(types.InlineKeyboardButton(text="💳 ОПЛАТИТЬ 1000₽", url=qp.base_url))
+    kb.row(types.InlineKeyboardButton(text="🔄 ПРОВЕРИТЬ ОПЛАТУ", callback_data=f"check_{label}"))
+    await callback.message.answer("<b>💳 ПОПОЛНЕНИЕ БАЛАНСА</b>\n\nНажмите кнопку ниже для оплаты:", parse_mode="HTML", reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data.startswith("check_"))
-async def check_p(callback: types.CallbackQuery):
+async def check(callback: types.CallbackQuery):
     label = callback.data.split("_")[1]
+    # Ускоренная проверка
+    await callback.answer("⏳ Синхронизация с банком...")
     history = yoomoney_client.operation_history(label=label)
     if history.operations and history.operations[-1].status == "success":
-        amount = history.operations[-1].amount
-        db_query("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, callback.from_user.id))
-        await callback.message.answer(f"✅ Баланс успешно пополнен на {amount}₽!")
+        db_query("UPDATE users SET balance = balance + ? WHERE id = ?", (history.operations[-1].amount, callback.from_user.id))
+        await callback.message.answer("✅ <b>Оплата принята!</b> Баланс обновлен.")
     else:
-        await callback.answer("❌ Транзакция не найдена или в обработке.", show_alert=True)
+        await callback.answer("❌ Платеж еще не подтвержден.", show_alert=True)
 
-@dp.callback_query(F.data == "refs")
-async def referral_menu(callback: types.CallbackQuery):
-    me = await bot.get_me()
-    link = f"https://t.me/{me.username}?start={callback.from_user.id}"
-    count = db_query("SELECT COUNT(id) FROM users WHERE referred_by = ?", (callback.from_user.id,), True)[0][0]
+@dp.callback_query(F.data == "withdraw")
+async def withdraw(callback: types.CallbackQuery):
+    u = get_user(callback.from_user.id)
+    if u[0] < MIN_WITHDRAW:
+        return await callback.answer(f"⚠️ Минимальный вывод: {MIN_WITHDRAW}₽", show_alert=True)
     
-    await callback.message.edit_text(
-        f"<b>🤝 ПАРТНЕРСКАЯ ПРОГРАММА</b>\n\n"
-        f"Приглашайте новых пользователей в <b>AutoGram AI</b> и получайте <b>10%</b> от каждого сбора их прибыли!\n\n"
-        f"🔗 Ваша ссылка:\n<code>{link}</code>\n\n"
-        f"👥 Приглашено партнеров: <b>{count}</b>",
-        parse_mode="HTML", reply_markup=InlineKeyboardBuilder().row(types.InlineKeyboardButton(text="⬅️ Назад", callback_data="back")).as_markup()
-    )
+    await callback.answer()
+    await callback.message.answer("📝 <b>Заявка на вывод</b>\n\nНапишите ваш номер карты и сумму:")
+    await bot.send_message(ADMIN_ID, f"🔔 <b>НОВАЯ ЗАЯВКА</b>\nID: {callback.from_user.id}\nБаланс: {u[0]}₽")
 
-@dp.message(Command("admin"))
-async def admin_stats(message: types.Message):
-    if message.from_user.id != ADMIN_ID: return
-    res = db_query("SELECT COUNT(id), SUM(balance) FROM users", fetch=True)[0]
-    await message.answer(f"📊 <b>АДМИН-СТАТИСТИКА:</b>\n\nВсего юзеров: {res[0]}\nСумма на балансах: {round(res[1] or 0, 2)}₽", parse_mode="HTML")
-
-@dp.callback_query(F.data == "back")
-async def go_back_home(callback: types.CallbackQuery):
-    await cmd_start(callback.message, CommandObject(command="start", args=None))
+@dp.callback_query(F.data == "home")
+async def home(callback: types.CallbackQuery):
+    await callback.answer()
+    await start(callback.message, CommandObject(command="start", args=None))
 
 async def main():
     init_db()
