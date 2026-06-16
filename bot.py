@@ -10,99 +10,131 @@ from yoomoney import Quickpay, Client
 BOT_TOKEN = "8800941405:AAH0TZbP48M5grkVxZ-tvP7lxK72eTSg4yc"
 YOOMONEY_TOKEN = "5133D1719448E2A5E1083A0FC605E369944CBB992B1D4490F13E2D4636C03191"
 YOOMONEY_WALLET = "4100118935779591"
-PRICE = 8000  # Цена в рублях
+PRICE = 8000
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 yoomoney_client = Client(YOOMONEY_TOKEN)
 
-# Текст объявления
-AD_TEXT = (
-    "<b>Забудьте о подписках навсегда! 🔒✨</b>\n\n"
-    "Устали каждый месяц платить за VPN? Мы подготовили для вас ультимативное решение — "
-    "тариф <b>«Навсегда»</b>. Один раз купили — и доступ к свободному интернету с вами всю жизнь!\n\n"
-    "<b>Что вы получаете:</b>\n"
-    "🚀 <b>Полный безлимит:</b> Никаких ограничений по трафику и скорости. Смотрите 4K-видео и скачивайте файлы.\n"
-    "📱 <b>Свобода:</b> До 10 устройств одновременно (телефон, ноутбук, планшет — хватит всем!).\n"
-    "🌍 <b>Весь мир:</b> Польша, Австрия, США, Испания, Франция, Сингапур, Гонконг, Оптимум и Ультра (LTE).\n\n"
-    "🛡 <b>Поддержка:</b> Мы остаемся на связи 24/7. Ваша стабильная работа — наш приоритет.\n\n"
-    f"💰 <b>Цена вопроса: {PRICE}₽.</b> Один раз и навсегда!"
+# --- ТЕКСТЫ ---
+MAIN_TEXT = (
+    "<b>💎 ПРЕМИУМ ДОСТУП: ТАРИФ «НАВСЕГДА»</b>\n"
+    "<i>Забудьте о ежемесячных платежах и блокировках</i>\n\n"
+    "⚡️ <b>Один платеж — вечный доступ.</b>\n"
+    "Вы инвестируете в свободу интернета один раз, и больше никогда не тратите ни рубля.\n\n"
+    "🚀 <b>Ваши преимущества:</b>\n"
+    "├ <b>Безлимит:</b> Скорость до 1 Гбит/с, трафик не ограничен.\n"
+    "├ <b>Семья:</b> До 10 устройств на один ключ одновременно.\n"
+    "└ <b>Стабильность:</b> Протоколы VLESS/Shadowsocks (не блокируются).\n\n"
+    "💰 <b>Стоимость:</b> <code>8 000₽</code> (вместо <s>24 000₽</s> за несколько лет подписок)\n\n"
+    "👇 <i>Выберите действие ниже:</i>"
 )
 
-# Главное меню
-def main_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="💎 Купить тариф «Навсегда»", callback_data="buy_vpn"))
-    builder.row(types.InlineKeyboardButton(text="🆘 Поддержка", url="https://t.me/твой_логин")) # ЗАМЕНИ НА СВОЙ ЛОГИН
-    return builder.as_markup()
+SERVERS_TEXT = (
+    "<b>🌍 НАШИ ЛОКАЦИИ И СЕРВЕРА:</b>\n\n"
+    "📍 <b>Европа:</b> Польша, Австрия, Испания, Франция\n"
+    "📍 <b>Азия:</b> Сингапур, Гонконг\n"
+    "📍 <b>Америка:</b> США (Нью-Йорк)\n\n"
+    "🔥 <b>Спец-узлы:</b>\n"
+    "— <code>Оптимум:</code> Авто-выбор самой низкой задержки.\n"
+    "— <code>Ультра (LTE):</code> Белые списки для мобильных операторов.\n\n"
+    "<i>Все сервера работают на 10-гигабитных портах.</i>"
+)
 
-# Обработчик команды /start
+# --- КЛАВИАТУРЫ ---
+def get_main_kb():
+    kb = InlineKeyboardBuilder()
+    kb.row(types.InlineKeyboardButton(text="💳 ОФОРМИТЬ ПОДПИСКУ", callback_data="buy_vpn"))
+    kb.row(
+        types.InlineKeyboardButton(text="🌍 Список локаций", callback_data="servers"),
+        types.InlineKeyboardButton(text="🛡 Поддержка", url="https://t.me/твой_логин")
+    )
+    return kb.as_markup()
+
+def get_payment_kb(url, label):
+    kb = InlineKeyboardBuilder()
+    kb.row(types.InlineKeyboardButton(text="🔗 Перейти к оплате (ЮMoney)", url=url))
+    kb.row(types.InlineKeyboardButton(text="💎 Я ОПЛАТИЛ", callback_data=f"check_{label}"))
+    kb.row(types.InlineKeyboardButton(text="⬅️ Назад", callback_data="back"))
+    return kb.as_markup()
+
+# --- ОБРАБОТЧИКИ ---
 @dp.message(Command("start"))
-async def start_cmd(message: types.Message):
+async def cmd_start(message: types.Message):
+    # Желательно загрузить картинку в телеграм и использовать её file_id
     await message.answer_photo(
-        photo="https://i.imgur.com/8X5Q7pX.jpeg", # Можно заменить на свою картинку
-        caption=AD_TEXT,
+        photo="https://i.imgur.com/8X5Q7pX.jpeg", # Поставь сюда крутой баннер
+        caption=MAIN_TEXT,
         parse_mode="HTML",
-        reply_markup=main_keyboard()
+        reply_markup=get_main_kb()
     )
 
-# Обработка нажатия кнопки "Купить"
+@dp.callback_query(F.data == "servers")
+async def show_servers(callback: types.CallbackQuery):
+    await callback.answer() # Убирает "часики" моментально
+    await callback.message.edit_caption(
+        caption=SERVERS_TEXT,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardBuilder().row(
+            types.InlineKeyboardButton(text="⬅️ Назад", callback_data="back")
+        ).as_markup()
+    )
+
 @dp.callback_query(F.data == "buy_vpn")
-async def create_order(callback: types.CallbackQuery):
-    label = str(uuid.uuid4()) # Уникальный ID платежа
-    
+async def buy_process(callback: types.CallbackQuery):
+    await callback.answer()
+    label = str(uuid.uuid4())
     quickpay = Quickpay(
         receiver=YOOMONEY_WALLET,
         quickpay_form="shop",
-        targets="VPN Тариф Навсегда",
-        paymentType="SB", # Оплата картой или кошельком
+        targets="VPN Lifetime Access",
+        paymentType="SB",
         sum=PRICE,
         label=label
     )
-
-    kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="💳 Перейти к оплате", url=quickpay.base_url))
-    kb.row(types.InlineKeyboardButton(text="✅ Проверить оплату", callback_data=f"check_{label}"))
-    kb.row(types.InlineKeyboardButton(text="⬅️ Назад", callback_data="back"))
-
+    
     await callback.message.edit_caption(
-        caption=f"<b>Оформление заказа</b>\n\nК оплате: <b>{PRICE}₽</b>\n\n"
-                "После оплаты нажмите кнопку «Проверить оплату» ниже. "
-                "Ваш личный ключ будет выдан мгновенно.",
+        caption=(
+            "<b>💎 ОФОРМЛЕНИЕ ЗАКАЗА</b>\n\n"
+            f"Вы покупаете: <b>VPN Тариф «Навсегда»</b>\n"
+            f"К оплате: <b>{PRICE}₽</b>\n\n"
+            "1. Нажмите кнопку ниже и оплатите счет.\n"
+            "2. После оплаты нажмите «Я ОПЛАТИЛ».\n"
+            "3. Бот мгновенно выдаст ваш ключ."
+        ),
         parse_mode="HTML",
-        reply_markup=kb.as_markup()
+        reply_markup=get_payment_kb(quickpay.base_url, label)
     )
 
-# Проверка оплаты
 @dp.callback_query(F.data.startswith("check_"))
-async def check_payment(callback: types.CallbackQuery):
-    label = callback.data.split("_")[1]
-    history = yoomoney_client.operation_history(label=label)
+async def check_pay(callback: types.CallbackQuery):
+    # ВАЖНО: сначала убираем загрузку с кнопки
+    await callback.answer("Проверяем транзакцию...") 
     
-    if history.operations:
-        operation = history.operations[-1]
-        if operation.status == "success":
-            # ТУТ ВСТАВЬ ТВОЙ КЛЮЧ ИЛИ ЛОГИКУ ВЫДАЧИ
-            vpn_key = "YOUR_VPN_KEY_ABC123" 
-            
-            await callback.message.answer(
-                f"🎉 <b>Оплата прошла успешно!</b>\n\n"
-                f"Ваш вечный ключ: <code>{vpn_key}</code>\n\n"
-                f"Инструкция по настройке: [ССЫЛКА]",
-                parse_mode="HTML"
-            )
-            await callback.answer()
-        else:
-            await callback.answer("❌ Оплата еще не поступила.", show_alert=True)
-    else:
-        await callback.answer("❌ Платеж не найден. Если вы оплатили, подождите 1-2 минуты.", show_alert=True)
+    label = callback.data.split("_")[1]
+    try:
+        history = yoomoney_client.operation_history(label=label)
+        if history.operations:
+            operation = history.operations[-1]
+            if operation.status == "success":
+                await callback.message.answer(
+                    "🎉 <b>ДОСТУП ОТКРЫТ!</b>\n\n"
+                    "Ваш вечный ключ: <code>KEY_LIFETIME_SERVER_777</code>\n\n"
+                    "Инструкция: https://telegra.ph/setup-vpn",
+                    parse_mode="HTML"
+                )
+                return
+    except Exception as e:
+        logging.error(f"Ошибка ЮMoney: {e}")
+
+    # Если оплаты нет, уведомляем всплывающим окном
+    await callback.answer("❌ Оплата не найдена. Попробуйте через минуту.", show_alert=True)
 
 @dp.callback_query(F.data == "back")
 async def go_back(callback: types.CallbackQuery):
-    await callback.message.edit_caption(caption=AD_TEXT, parse_mode="HTML", reply_markup=main_keyboard())
+    await callback.answer()
+    await callback.message.edit_caption(caption=MAIN_TEXT, parse_mode="HTML", reply_markup=get_main_kb())
 
 async def main():
     await dp.start_polling(bot)
