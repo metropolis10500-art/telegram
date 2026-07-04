@@ -24,9 +24,9 @@ LOG_FILE = "bot_log.txt"
 
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# Функция для записи логов в файл и в консоль
 def log(message):
-    print(message)
+    # flush=True заставляет писать лог мгновенно, не ждя переполнения буфера
+    print(message, flush=True)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{message}\n")
 
@@ -83,25 +83,30 @@ def cleanup_file(file_path: str | None):
 async def download_to_file(client, message: Message) -> str | None:
     temp_path = os.path.join(TEMP_DIR, str(uuid.uuid4()))
     try:
+        log(f"[⬇️] Пост {message.id}: Начинаю скачивание медиа...")
         file_path = await asyncio.wait_for(
             client.download_media(message, file_name=temp_path), 
             timeout=120.0
         )
+        
         if file_path is None:
+            log(f"[⬇️] Пост {message.id}: download_media вернул None (медиа нет?)")
             return None
         
         if os.path.getsize(file_path) == 0:
+            log(f"[⬇️] Пост {message.id}: Файл пустой (0 байт)")
             cleanup_file(file_path)
             return None
             
+        log(f"[✅] Пост {message.id}: Медиа успешно скачано!")
         return file_path
         
     except asyncio.TimeoutError:
-        log(f"[❌] Таймаут 120 сек! Файл не скачался.")
+        log(f"[❌] Пост {message.id}: Таймаут 120 сек! Файл не скачался.")
         cleanup_file(temp_path)
         return None
     except Exception as e:
-        log(f"[❌] Ошибка скачивания на диск: {e}")
+        log(f"[❌] Пост {message.id}: Ошибка скачивания на диск: {e}")
         cleanup_file(temp_path)
         return None
 
@@ -109,16 +114,20 @@ async def publish_single(msg: Message):
     caption = clean_text(msg.caption or msg.text or "")
     
     if not msg.media:
+        log(f"[📤] Пост {msg.id}: Только текст. Отправляем...")
         return await try_send(bot.send_message, TARGET_CHAT, caption)
     
     file_path = await download_to_file(app, msg)
     
     if not file_path:
         if caption:
+            log(f"[📤] Пост {msg.id}: Медиа не скачалось, отправляем только текст...")
             return await try_send(bot.send_message, TARGET_CHAT, caption)
+        log(f"[⚠️] Пост {msg.id}: Нет медиа и нет текста. Пропуск.")
         return False
     
     try:
+        log(f"[📤] Пост {msg.id}: Начинаю отправку медиа в канал...")
         if msg.photo:
             result = await try_send(bot.send_photo, TARGET_CHAT, file_path, caption=caption)
         elif msg.video:
@@ -141,6 +150,12 @@ async def publish_single(msg: Message):
                 await try_send(bot.send_message, TARGET_CHAT, caption)
         else:
             result = False
+        
+        if result:
+            log(f"[✅] Пост {msg.id}: Успешно отправлено в канал!")
+        else:
+            log(f"[❌] Пост {msg.id}: Ошибка отправки в канал.")
+            
         return result
     finally:
         cleanup_file(file_path)
@@ -149,6 +164,8 @@ async def publish_album(messages: list[Message]):
     media_group = []
     downloaded_paths = []
     caption_used = False
+    
+    log(f"[📤] Альбом: Начинаю обработку {len(messages)} файлов...")
 
     for m in messages:
         caption = clean_text(m.caption or "") if not caption_used else ""
@@ -172,7 +189,12 @@ async def publish_album(messages: list[Message]):
 
     try:
         if media_group:
+            log(f"[📤] Альбом: Отправляю {len(media_group)} файлов в канал...")
             result = await try_send(bot.send_media_group, TARGET_CHAT, media=media_group)
+            if result:
+                log(f"[✅] Альбом: Успешно отправлен!")
+            else:
+                log(f"[❌] Альбом: Ошибка отправки.")
             return result
         return False
     finally:
@@ -212,7 +234,7 @@ async def history_publisher():
                 continue
             
             empty_count = 0
-            log(f"[📚] Найден пост ID {next_id}. Начинаю обработку...")
+            log(f"[📚] Найден пост ID {next_id}. Тип: {'Альбом' if msg.media_group_id else 'Одиночный'}. Начинаю обработку...")
 
             if msg.media_group_id:
                 album = await app.get_media_group(SOURCE_CHAT, next_id)
@@ -243,10 +265,9 @@ async def history_publisher():
                     await asyncio.sleep(5)
 
         except Exception as e:
-            # Если произойдет любая критическая ошибка, она запишется в лог, и бот продолжит работать
             log(f"[💥] КРИТИЧЕСКАЯ ОШИБКА на посте {next_id}: {e}")
             log(traceback.format_exc())
-            save_last_sent_id(next_id) # Перепрыгиваем проблемный пост
+            save_last_sent_id(next_id)
             await asyncio.sleep(10)
 
 # ==================== LIVE ====================
