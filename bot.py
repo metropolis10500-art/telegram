@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import uuid
 import re
@@ -166,29 +167,43 @@ async def publish_single(msg: Message):
             caption = caption + "\n\n[⚠️ Видео слишком большое для пересылки ботом (лимит 50 МБ)]"
             await try_send(bot.send_message, TARGET_CHAT, caption)
         cleanup_file(file_path)
-        return True # Возвращаем True, чтобы бот пошел дальше
-    # ===============================
+        return True
+    # =====================================
+
+    # === ЧИТАЕМ ФАЙЛ В ОПЕРАТИВНУЮ ПАМЯТЬ (RAM) ===
+    try:
+        with open(file_path, "rb") as f:
+            file_buffer = io.BytesIO(f.read())
+        # Обязательно сохраняем имя файла с расширением (например, .jpg), иначе Telegram не поймет формат
+        file_buffer.name = os.path.basename(file_path)
+        file_buffer.seek(0) # Сбрасываем указатель в начало
+        log(f"[ℹ️] Пост {msg.id}: Файл загружен в RAM для отправки.")
+    except Exception as e:
+        log(f"[❌] Пост {msg.id}: Не удалось прочитать файл в память: {e}")
+        cleanup_file(file_path)
+        return False
+    # ==============================================
 
     try:
-        log(f"[📤] Пост {msg.id}: Начинаю отправку медиа в канал...")
+        log(f"[📤] Пост {msg.id}: Начинаю отправку медиа в канал (через RAM)...")
         if msg.photo:
-            result = await try_send(bot.send_photo, TARGET_CHAT, file_path, caption=caption)
+            result = await try_send(bot.send_photo, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.video:
-            result = await try_send(bot.send_video, TARGET_CHAT, file_path, caption=caption)
+            result = await try_send(bot.send_video, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.animation:
-            result = await try_send(bot.send_animation, TARGET_CHAT, file_path, caption=caption)
+            result = await try_send(bot.send_animation, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.audio:
-            result = await try_send(bot.send_audio, TARGET_CHAT, file_path, caption=caption)
+            result = await try_send(bot.send_audio, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.voice:
-            result = await try_send(bot.send_voice, TARGET_CHAT, file_path, caption=caption)
+            result = await try_send(bot.send_voice, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.document:
-            result = await try_send(bot.send_document, TARGET_CHAT, file_path, caption=caption)
+            result = await try_send(bot.send_document, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.video_note:
-            result = await try_send(bot.send_video_note, TARGET_CHAT, file_path)
+            result = await try_send(bot.send_video_note, TARGET_CHAT, file_buffer)
             if result and caption:
                 await try_send(bot.send_message, TARGET_CHAT, caption)
         elif msg.sticker:
-            result = await try_send(bot.send_sticker, TARGET_CHAT, file_path)
+            result = await try_send(bot.send_sticker, TARGET_CHAT, file_buffer)
             if result and caption:
                 await try_send(bot.send_message, TARGET_CHAT, caption)
         else:
@@ -201,6 +216,7 @@ async def publish_single(msg: Message):
             
         return result
     finally:
+        # Удаляем временный файл с диска
         cleanup_file(file_path)
 
 async def publish_album(messages: list[Message]):
