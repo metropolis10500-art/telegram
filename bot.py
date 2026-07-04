@@ -92,7 +92,26 @@ def cleanup_file(file_path: str | None):
             pass
 
 async def download_to_file(client, message: Message) -> str | None:
-    temp_path = os.path.join(TEMP_DIR, str(uuid.uuid4()))
+    # Определяем правильное расширение для файла (без него Телеграм зависает при отправке!)
+    ext = ".bin"
+    if message.photo:
+        ext = ".jpg"
+    elif message.video:
+        ext = ".mp4"
+    elif message.animation:
+        ext = ".mp4"
+    elif message.voice:
+        ext = ".ogg"
+    elif message.video_note:
+        ext = ".mp4"
+    elif message.audio:
+        ext = ".mp3"
+    elif message.document and message.document.file_name:
+        # Если это документ, берем его оригинальное расширение
+        ext = os.path.splitext(message.document.file_name)[1]
+
+    temp_path = os.path.join(TEMP_DIR, f"{uuid.uuid4()}{ext}")
+    
     try:
         log(f"[⬇️] Пост {message.id}: Начинаю скачивание медиа...")
         file_path = await asyncio.wait_for(
