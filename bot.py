@@ -2,7 +2,7 @@ import asyncio
 import os
 import uuid
 import re
-
+import traceback
 from pyrogram import Client, filters
 from pyrogram.errors import FloodWait
 from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
@@ -11,43 +11,33 @@ from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 API_ID = 36895411  # Твой API ID
 API_HASH = "c3cba5f8e4f0143ac2976f6459a5b612"  # Твой API HASH
 BOT_TOKEN = "8038462440:AAEoCfxTBFwfJhhDjRRJcOKhB9820rqGs6o"  # Токен бота-паблишера
-
-# ВСТАВЬ СЮДА СТРОКУ ИЗ ФАЙЛА my_session_string.txt
 SESSION_STRING = "AgIy-rMAIIIXzYvdcANhco5l7O30zrBnbtkgp-RuiY9InOJnsLNDT9Jiuqj-3WT0iSWrB3VYZ_-WpzD0PR1Cg4mpwpSGGbj_YJ9xLfMXT-SlRDR9qyFj-d8wma-93hxSX_mgU2KDEeTYVwcMKu_vjIRhwutuXIE1JRDunrB7su5n4yyBp5KJyhPwt6EXERfCtzjMbcqOFD3jbdN3VUel3gIIXonQ42q2KIg-SZUNSUBJJi5G98UKIjBZO3dLkrKzWUxltG0ipVUx2q5Xf7ju7k8GhgXC2nmNJ7ePxs38BqVNtKkXQki90HnN-l-7BYR-eIvd5j7xjHkWenPevza7qNmFskN2RAAAAAFHgBc7AA"
 
 SOURCE_CHAT = "zakadrombriya"
 TARGET_CHAT = "mukbang_natik"
-
-INTERVAL = 180  # 3 минут между постами
+INTERVAL = 180  # 3 минуты
 # ==============================================================
 
 DB_FILE = "progress.txt"
 TEMP_DIR = "temp_downloads"
+LOG_FILE = "bot_log.txt"
 
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+# Функция для записи логов в файл и в консоль
+def log(message):
+    print(message)
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{message}\n")
 
 if not all([API_ID, API_HASH, BOT_TOKEN, SESSION_STRING, SOURCE_CHAT, TARGET_CHAT]):
     raise ValueError("❌ Заполни ВСЕ настройки в начале файла bot.py!")
 
-# ==================== КЛИЕНТЫ ====================
-# Обрати внимание: здесь используется session_string
-app = Client(
-    name="my_userbot_string", 
-    api_id=API_ID, 
-    api_hash=API_HASH, 
-    session_string=SESSION_STRING
-)
-
-bot = Client(
-    name="publisher_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-)
+app = Client(name="my_userbot_string", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
+bot = Client(name="publisher_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 posted_live_ids = set()
 
-# ==================== ФУНКЦИИ ====================
 def clean_text(text: str) -> str:
     if not text:
         return ""
@@ -74,10 +64,10 @@ async def try_send(action, *args, **kwargs):
         try:
             return await action(*args, **kwargs)
         except FloodWait as e:
-            print(f"[⚠️ FloodWait] Ждём {e.value} сек...")
+            log(f"[⚠️ FloodWait] Ждём {e.value} сек...")
             await asyncio.sleep(e.value)
         except Exception as e:
-            print(f"[❌ Ошибка отправки] Попытка {attempt + 1}/3: {e}")
+            log(f"[❌ Ошибка отправки] Попытка {attempt + 1}/3: {e}")
             if attempt == 2:
                 return None
             await asyncio.sleep(2)
@@ -107,11 +97,11 @@ async def download_to_file(client, message: Message) -> str | None:
         return file_path
         
     except asyncio.TimeoutError:
-        print(f"[❌] Таймаут 120 сек! Файл не скачался.")
+        log(f"[❌] Таймаут 120 сек! Файл не скачался.")
         cleanup_file(temp_path)
         return None
     except Exception as e:
-        print(f"[❌] Ошибка скачивания на диск: {e}")
+        log(f"[❌] Ошибка скачивания на диск: {e}")
         cleanup_file(temp_path)
         return None
 
@@ -198,7 +188,7 @@ async def publish_clean_post(messages):
 # ==================== ИСТОРИЯ ====================
 async def history_publisher():
     await asyncio.sleep(5)
-    print("[📚] Запущен парсер истории...")
+    log("[📚] Запущен парсер истории...")
     empty_count = 0
 
     while True:
@@ -217,12 +207,12 @@ async def history_publisher():
                 save_last_sent_id(next_id)
                 if empty_count >= 50:
                     await asyncio.sleep(60)
-                    empty_count = 0
                 else:
                     await asyncio.sleep(0.5)
                 continue
             
             empty_count = 0
+            log(f"[📚] Найден пост ID {next_id}. Начинаю обработку...")
 
             if msg.media_group_id:
                 album = await app.get_media_group(SOURCE_CHAT, next_id)
@@ -236,23 +226,28 @@ async def history_publisher():
                 save_last_sent_id(max_id)
                 
                 if success:
-                    print(f"[📚] ✅ Отправлен альбом. Ждём {INTERVAL} сек...")
+                    log(f"[📚] ✅ Отправлен альбом. Ждём {INTERVAL} сек...")
                     await asyncio.sleep(INTERVAL)
                 else:
+                    log(f"[📚] ⚠️ Альбом не отправился. Идем дальше.")
                     await asyncio.sleep(5)
             else:
                 success = await publish_clean_post(msg)
                 save_last_sent_id(msg.id)
                 
                 if success:
-                    print(f"[📚] ✅ Отправлен пост. Ждём {INTERVAL} сек...")
+                    log(f"[📚] ✅ Отправлен пост {next_id}. Ждём {INTERVAL} сек...")
                     await asyncio.sleep(INTERVAL)
                 else:
+                    log(f"[📚] ⚠️ Пост {next_id} не отправился. Идем дальше.")
                     await asyncio.sleep(5)
 
         except Exception as e:
-            print(f"[📚] ⚠️ Ошибка: {e}")
-            await asyncio.sleep(60)
+            # Если произойдет любая критическая ошибка, она запишется в лог, и бот продолжит работать
+            log(f"[💥] КРИТИЧЕСКАЯ ОШИБКА на посте {next_id}: {e}")
+            log(traceback.format_exc())
+            save_last_sent_id(next_id) # Перепрыгиваем проблемный пост
+            await asyncio.sleep(10)
 
 # ==================== LIVE ====================
 @app.on_message(filters.chat(SOURCE_CHAT))
@@ -272,36 +267,36 @@ async def live_publisher(client, message: Message):
             if message.id == min(m.id for m in album):
                 await publish_clean_post(album)
         except Exception as e:
-            print(f"[🔴 LIVE] ❌ Ошибка альбома: {e}")
+            log(f"[🔴 LIVE] ❌ Ошибка альбома: {e}")
     else:
         await publish_clean_post(message)
 
 # ==================== ЗАПУСК ====================
 async def main():
-    print("🚀 Запуск бота...")
+    log("🚀 Запуск бота...")
     
     await app.start()
-    print("✅ Юзербот подключен (через SESSION_STRING)")
+    log("✅ Юзербот подключен (через SESSION_STRING)")
     
     await bot.start()
-    print("✅ Бот-паблишер подключен")
+    log("✅ Бот-паблишер подключен")
     
     try:
         source = await app.get_chat(SOURCE_CHAT)
-        print(f"✅ Источник доступен: {source.title}")
+        log(f"✅ Источник доступен: {source.title}")
     except Exception as e:
-        print(f"❌ НЕТ ДОСТУПА к источнику {SOURCE_CHAT}: {e}")
+        log(f"❌ НЕТ ДОСТУПА к источнику {SOURCE_CHAT}: {e}")
         return
 
     try:
         target = await bot.get_chat(TARGET_CHAT)
-        print(f"✅ Целевой канал доступен: {target.title}")
+        log(f"✅ Целевой канал доступен: {target.title}")
     except Exception as e:
-        print(f"❌ НЕТ ДОСТУПА к целевому каналу {TARGET_CHAT}: {e}")
+        log(f"❌ НЕТ ДОСТУПА к целевому каналу {TARGET_CHAT}: {e}")
         return
 
     asyncio.create_task(history_publisher())
-    print("📚 Парсер истории запущен. Бот работает.")
+    log("📚 Парсер истории запущен. Бот работает.")
     
     await asyncio.Event().wait()
 
@@ -309,6 +304,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n🛑 Бот остановлен")
+        log("\n🛑 Бот остановлен")
     except Exception as e:
-        print(f"\n💥 Критическая ошибка: {e}")
+        log(f"\n💀 ФАТАЛЬНЫЙ КРАШ БОТА: {e}")
+        log(traceback.format_exc())
