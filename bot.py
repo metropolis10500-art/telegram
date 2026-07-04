@@ -145,15 +145,16 @@ async def publish_single(msg: Message):
     caption = clean_text(msg.caption or msg.text or "")
     
     if not msg.media:
-        log(f"[📤] Пост {msg.id}: Только текст. Отправляем...")
-        return await try_send(bot.send_message, TARGET_CHAT, caption)
+        log(f"[📤] Пост {msg.id}: Только текст. Отправляем через юзербота...")
+        # ИЗМЕНЕНИЕ: используем app вместо bot
+        return await try_send(app.send_message, TARGET_CHAT, caption)
     
     file_path = await download_to_file(app, msg)
     
     if not file_path:
         if caption:
-            log(f"[📤] Пост {msg.id}: Медиа не скачалось, отправляем только текст...")
-            return await try_send(bot.send_message, TARGET_CHAT, caption)
+            log(f"[📤] Пост {msg.id}: Медиа не скачалось, отправляем только текст через юзербота...")
+            return await try_send(app.send_message, TARGET_CHAT, caption)
         log(f"[⚠️] Пост {msg.id}: Нет медиа и нет текста. Пропуск.")
         return False
     
@@ -162,10 +163,10 @@ async def publish_single(msg: Message):
     log(f"[ℹ️] Пост {msg.id}: Размер файла: {file_size_mb:.2f} МБ")
     
     if file_size_mb > 50:
-        log(f"[⚠️] Пост {msg.id}: Файл больше 50 МБ! Обычные боты не могут отправлять такие файлы. Пропускаем видео.")
+        log(f"[⚠️] Пост {msg.id}: Файл больше 50 МБ! Пропускаем видео.")
         if caption:
-            caption = caption + "\n\n[⚠️ Видео слишком большое для пересылки ботом (лимит 50 МБ)]"
-            await try_send(bot.send_message, TARGET_CHAT, caption)
+            caption = caption + "\n\n[⚠️ Видео слишком большое для пересылки]"
+            await try_send(app.send_message, TARGET_CHAT, caption)
         cleanup_file(file_path)
         return True
     # =====================================
@@ -174,9 +175,8 @@ async def publish_single(msg: Message):
     try:
         with open(file_path, "rb") as f:
             file_buffer = io.BytesIO(f.read())
-        # Обязательно сохраняем имя файла с расширением (например, .jpg), иначе Telegram не поймет формат
         file_buffer.name = os.path.basename(file_path)
-        file_buffer.seek(0) # Сбрасываем указатель в начало
+        file_buffer.seek(0)
         log(f"[ℹ️] Пост {msg.id}: Файл загружен в RAM для отправки.")
     except Exception as e:
         log(f"[❌] Пост {msg.id}: Не удалось прочитать файл в память: {e}")
@@ -185,38 +185,38 @@ async def publish_single(msg: Message):
     # ==============================================
 
     try:
-        log(f"[📤] Пост {msg.id}: Начинаю отправку медиа в канал (через RAM)...")
+        # ИЗМЕНЕНИЕ: Отправляем через app (Юзербот), а не через bot
+        log(f"[📤] Пост {msg.id}: Начинаю отправку медиа в канал через ЮЗЕРБОТА...")
         if msg.photo:
-            result = await try_send(bot.send_photo, TARGET_CHAT, file_buffer, caption=caption)
+            result = await try_send(app.send_photo, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.video:
-            result = await try_send(bot.send_video, TARGET_CHAT, file_buffer, caption=caption)
+            result = await try_send(app.send_video, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.animation:
-            result = await try_send(bot.send_animation, TARGET_CHAT, file_buffer, caption=caption)
+            result = await try_send(app.send_animation, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.audio:
-            result = await try_send(bot.send_audio, TARGET_CHAT, file_buffer, caption=caption)
+            result = await try_send(app.send_audio, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.voice:
-            result = await try_send(bot.send_voice, TARGET_CHAT, file_buffer, caption=caption)
+            result = await try_send(app.send_voice, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.document:
-            result = await try_send(bot.send_document, TARGET_CHAT, file_buffer, caption=caption)
+            result = await try_send(app.send_document, TARGET_CHAT, file_buffer, caption=caption)
         elif msg.video_note:
-            result = await try_send(bot.send_video_note, TARGET_CHAT, file_buffer)
+            result = await try_send(app.send_video_note, TARGET_CHAT, file_buffer)
             if result and caption:
-                await try_send(bot.send_message, TARGET_CHAT, caption)
+                await try_send(app.send_message, TARGET_CHAT, caption)
         elif msg.sticker:
-            result = await try_send(bot.send_sticker, TARGET_CHAT, file_buffer)
+            result = await try_send(app.send_sticker, TARGET_CHAT, file_buffer)
             if result and caption:
-                await try_send(bot.send_message, TARGET_CHAT, caption)
+                await try_send(app.send_message, TARGET_CHAT, caption)
         else:
             result = False
         
         if result:
-            log(f"[✅] Пост {msg.id}: Успешно отправлено в канал!")
+            log(f"[✅] Пост {msg.id}: Успешно отправлено в канал через юзербота!")
         else:
             log(f"[❌] Пост {msg.id}: Ошибка отправки в канал.")
             
         return result
     finally:
-        # Удаляем временный файл с диска
         cleanup_file(file_path)
 
 async def publish_album(messages: list[Message]):
