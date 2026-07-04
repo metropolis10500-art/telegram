@@ -23,7 +23,7 @@ API_ID = int(API_ID) # Pyrogram требует число
 
 # Настройка Gemini
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-pro')
 
 # Создаем клиента бота
 app = Client("seo_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
