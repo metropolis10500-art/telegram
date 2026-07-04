@@ -18,7 +18,7 @@ SESSION_STRING = "AgIy-rMAIIIXzYvdcANhco5l7O30zrBnbtkgp-RuiY9InOJnsLNDT9Jiuqj-3W
 SOURCE_CHAT = "zakadrombriya"
 TARGET_CHAT = "mukbang_natik"
 
-INTERVAL = 900  # 15 минут между постами
+INTERVAL = 180  # 3 минут между постами
 # ==============================================================
 
 DB_FILE = "progress.txt"
