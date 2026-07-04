@@ -1,200 +1,255 @@
 import asyncio
-import sqlite3
-import time
-import logging
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, CommandObject
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from yoomoney import Quickpay, Client
+import io
+import re
+from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
+from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 
-# --- КОНФИГУРАЦИЯ ---
-BOT_TOKEN = "8800941405:AAH0TZbP48M5grkVxZ-tvP7lxK72eTSg4yc"
-YOOMONEY_TOKEN = "5133D1719448E2A5E1083A0FC605E369944CBB992B1D4490F13E2D4636C03191"
-YOOMONEY_WALLET = "4100118935779591"
-ADMIN_ID = 12345678  # Твой ID
-MIN_WITHDRAW = 3000
+# --- НАСТРОЙКИ ---
+API_ID = 36895411  # Твой API ID
+API_HASH = "c3cba5f8e4f0143ac2976f6459a5b612"  # Твой API HASH
+BOT_TOKEN = "8038462440:AAEoCfxTBFwfJhhDjRRJcOKhB9820rqGs6o"  # Токен бота
 
-# ТАРИФЫ: [Название, Цена, Доход в час, Эмодзи]
-TARIFS = {
-    "node_1": ["Starter AI", 1000, 12.5, "🥉"],   # 300₽/сутки
-    "node_2": ["Advanced Neural", 5000, 75.0, "🥈"], # 1800₽/сутки
-    "node_3": ["Quantum Core", 15000, 275.0, "🥇"]  # 6600₽/сутки
-}
+SOURCE_CHAT = "zakadrombriya"
+TARGET_CHAT = "mukbang_natik"
 
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-yoomoney_client = Client(YOOMONEY_TOKEN)
+DB_FILE = "progress.txt"
+INTERVAL = 900  # 15 минут (900 секунд)
 
-# --- БАЗА ДАННЫХ (Оптимизированная) ---
-def db_query(sql, params=(), fetch=False):
-    with sqlite3.connect("autogram_premium.db") as conn:
-        cur = conn.cursor()
-        cur.execute(sql, params)
-        return cur.fetchall() if fetch else conn.commit()
+app = Client("my_userbot", api_id=API_ID, api_hash=API_HASH)
+bot = Client("my_bot_publisher", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-def init_db():
-    db_query("""CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY, balance REAL DEFAULT 0, ref_id INTEGER,
-        node_1 INTEGER DEFAULT 0, node_2 INTEGER DEFAULT 0, node_3 INTEGER DEFAULT 0,
-        last_tick INTEGER DEFAULT 0
-    )""")
+posted_live_ids = set()
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
-def get_user(user_id):
-    res = db_query("SELECT balance, node_1, node_2, node_3, last_tick, ref_id FROM users WHERE id = ?", (user_id,), True)
-    if not res:
-        db_query("INSERT INTO users (id, last_tick) VALUES (?, ?)", (user_id, int(time.time())))
-        return (0, 0, 0, 0, int(time.time()), None)
-    return res[0]
 
-def calc_income(u):
-    # u = (balance, n1, n2, n3, last_tick, ref_id)
-    now = int(time.time())
-    hours = (now - u[4]) / 3600
-    hourly_rate = (u[1]*TARIFS["node_1"][2]) + (u[2]*TARIFS["node_2"][2]) + (u[3]*TARIFS["node_3"][2])
-    return round(hours * hourly_rate, 2), now
-
-# --- КЛАВИАТУРЫ ---
-def main_kb():
-    builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="💎 ЛИЧНЫЙ КАБИНЕТ", callback_data="cabinet"))
-    builder.row(
-        types.InlineKeyboardButton(text="🛒 МАГАЗИН", callback_data="shop"),
-        types.InlineKeyboardButton(text="👥 ПАРТНЕРЫ", callback_data="refs")
+# Функция очистки текста от ссылок на оригинальный канал
+def clean_text(text: str) -> str:
+    if not text:
+        return ""
+    text = re.sub(rf"@{SOURCE_CHAT}\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        rf"https?://t\.me/{SOURCE_CHAT}/\S*", "", text, flags=re.IGNORECASE
     )
-    builder.row(types.InlineKeyboardButton(text="ℹ️ О СИСТЕМЕ", callback_data="info"))
-    return builder.as_markup()
+    text = re.sub(rf"t\.me/{SOURCE_CHAT}", "", text, flags=re.IGNORECASE)
+    return text.strip()
 
-# --- ОБРАБОТЧИКИ ---
 
-@dp.message(Command("start"))
-async def start(message: types.Message, command: CommandObject):
-    u = get_user(message.from_user.id)
-    if command.args and command.args.isdigit() and not u[5] and int(command.args) != message.from_user.id:
-        db_query("UPDATE users SET ref_id = ? WHERE id = ?", (int(command.args), message.from_user.id))
+def get_last_sent_id():
+    try:
+        with open(DB_FILE, "r") as f:
+            return int(f.read().strip())
+    except FileNotFoundError:
+        return 0
 
-    text = (
-        "<b>🤖 AUTOGRAM AI — ВАША СТАНЦИЯ ПРИБЫЛИ</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "Это полностью автоматизированная система заработка на базе нейросетевых вычислений.\n\n"
-        "✅ <b>Зарабатывайте 24/7</b> без вашего участия.\n"
-        "✅ <b>Моментальный вывод</b> от 3,000₽.\n"
-        "✅ <b>Прозрачная статистика</b> и надежная защита.\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "<i>Начните свой путь к пассивному доходу прямо сейчас!</i>"
-    )
-    await message.answer(text, parse_mode="HTML", reply_markup=main_kb())
 
-@dp.callback_query(F.data == "cabinet")
-async def cabinet(callback: types.CallbackQuery):
-    await callback.answer()
-    u = get_user(callback.from_user.id)
-    pending, _ = calc_income(u)
-    
-    text = (
-        "<b>💼 ЛИЧНЫЙ КАБИНЕТ</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"💳 Мой баланс: <b>{round(u[0], 2)} ₽</b>\n"
-        f"⏳ Накоплено: <b>{pending} ₽</b>\n\n"
-        f"<b>Активные мощности:</b>\n"
-        f"└ {TARIFS['node_1'][3]} v1: {u[1]} | {TARIFS['node_2'][3]} v2: {u[2]} | {TARIFS['node_3'][3]} v3: {u[3]}\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"<i>Минимальный вывод: {MIN_WITHDRAW}₽</i>"
-    )
-    kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="📥 СОБРАТЬ ПРИБЫЛЬ", callback_data="collect"))
-    kb.row(
-        types.InlineKeyboardButton(text="➕ ПОПОЛНИТЬ", callback_data="dep"),
-        types.InlineKeyboardButton(text="💸 ВЫВОД", callback_data="withdraw")
-    )
-    kb.row(types.InlineKeyboardButton(text="⬅️ НАЗАД", callback_data="home"))
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.as_markup())
+def save_last_sent_id(message_id):
+    with open(DB_FILE, "w") as f:
+        f.write(str(message_id))
 
-@dp.callback_query(F.data == "collect")
-async def collect(callback: types.CallbackQuery):
-    u = get_user(callback.from_user.id)
-    pending, now = calc_income(u)
-    
-    if pending < 0.5:
-        return await callback.answer("⚠️ Минимальный сбор от 0.5 ₽", show_alert=True)
-    
-    db_query("UPDATE users SET balance = balance + ?, last_tick = ? WHERE id = ?", (pending, now, callback.from_user.id))
-    
-    if u[5]: # Рефералка 10%
-        bonus = pending * 0.10
-        db_query("UPDATE users SET balance = balance + ? WHERE id = ?", (bonus, u[5]))
-        try: await bot.send_message(u[5], f"📈 <b>Партнерский бонус!</b>\nНачислено: +{round(bonus, 2)}₽")
-        except: pass
 
-    await callback.answer(f"✅ Собрано: {pending}₽", show_alert=True)
-    await cabinet(callback)
+# Безопасное выполнение запросов с защитой от лимитов (FloodWait)
+async def safe_send(action, *args, **kwargs):
+    while True:
+        try:
+            return await action(*args, **kwargs)
+        except FloodWait as e:
+            print(f"[Предупреждение] Лимит запросов! Ждем {e.value} сек...")
+            await asyncio.sleep(e.value)
+        except Exception as e:
+            print(f"[Ошибка] Не удалось отправить: {e}")
+            return None
 
-@dp.callback_query(F.data == "shop")
-async def shop(callback: types.CallbackQuery):
-    await callback.answer()
-    text = "<b>🛒 МАГАЗИН ВЫЧИСЛИТЕЛЬНЫХ УЗЛОВ</b>\n\n<i>Арендуйте мощности AI для генерации прибыли:</i>"
-    kb = InlineKeyboardBuilder()
-    for k, v in TARIFS.items():
-        kb.row(types.InlineKeyboardButton(text=f"{v[3]} {v[0]} — {v[1]}₽ ({v[2]}₽/ч)", callback_data=f"buy_{k}"))
-    kb.row(types.InlineKeyboardButton(text="⬅️ НАЗАД", callback_data="home"))
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data.startswith("buy_"))
-async def buy(callback: types.CallbackQuery):
-    key = callback.data.replace("buy_", "")
-    u = get_user(callback.from_user.id)
-    price = TARIFS[key][1]
-    
-    if u[0] < price:
-        return await callback.answer("❌ Недостаточно средств на балансе!", show_alert=True)
-    
-    db_query(f"UPDATE users SET balance = balance - ?, {key} = {key} + 1 WHERE id = ?", (price, callback.from_user.id))
-    await callback.answer(f"🚀 {TARIFS[key][0]} успешно запущен!", show_alert=True)
-    await shop(callback)
+# Функция для скачивания файла в оперативную память
+async def download_to_memory(client, message):
+    try:
+        file_buffer = io.BytesIO()
+        await client.download_media(message, in_memory=file_buffer)
+        file_buffer.seek(0)  # Сбрасываем указатель в начало файла
+        return file_buffer
+    except Exception as e:
+        print(f"[Ошибка] Не удалось скачать медиа из поста {message.id}: {e}")
+        return None
 
-@dp.callback_query(F.data == "dep")
-async def deposit(callback: types.CallbackQuery):
-    await callback.answer()
-    # Пример на 1000 руб, можно сделать выбор сумм кнопками
-    label = f"d_{callback.from_user.id}_{int(time.time())}"
-    qp = Quickpay(receiver=YOOMONEY_WALLET, quickpay_form="shop", targets="AutoGram AI", paymentType="SB", sum=1000, label=label)
-    
-    kb = InlineKeyboardBuilder()
-    kb.row(types.InlineKeyboardButton(text="💳 ОПЛАТИТЬ 1000₽", url=qp.base_url))
-    kb.row(types.InlineKeyboardButton(text="🔄 ПРОВЕРИТЬ ОПЛАТУ", callback_data=f"check_{label}"))
-    await callback.message.answer("<b>💳 ПОПОЛНЕНИЕ БАЛАНСА</b>\n\nНажмите кнопку ниже для оплаты:", parse_mode="HTML", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data.startswith("check_"))
-async def check(callback: types.CallbackQuery):
-    label = callback.data.split("_")[1]
-    # Ускоренная проверка
-    await callback.answer("⏳ Синхронизация с банком...")
-    history = yoomoney_client.operation_history(label=label)
-    if history.operations and history.operations[-1].status == "success":
-        db_query("UPDATE users SET balance = balance + ? WHERE id = ?", (history.operations[-1].amount, callback.from_user.id))
-        await callback.message.answer("✅ <b>Оплата принята!</b> Баланс обновлен.")
+# Новая функция чистой публикации (без плашки "Переслано от...")
+async def publish_clean_post(messages):
+    # Если на вход пришел ОДИНОЧНЫЙ пост
+    if not isinstance(messages, list):
+        msg = messages
+        new_caption = clean_text(msg.text or msg.caption)
+
+        if msg.media:
+            # Скачиваем файл в ОЗУ
+            file_data = await download_to_memory(app, msg)
+            if not file_data:
+                return False
+
+            # Определяем тип медиа и публикуем его "чистым" способом
+            if msg.photo:
+                return await safe_send(
+                    bot.send_photo,
+                    chat_id=TARGET_CHAT,
+                    photo=file_data,
+                    caption=new_caption,
+                )
+            elif msg.video:
+                return await safe_send(
+                    bot.send_video,
+                    chat_id=TARGET_CHAT,
+                    video=file_data,
+                    caption=new_caption,
+                )
+            elif msg.animation:  # GIF-анимации
+                return await safe_send(
+                    bot.send_animation,
+                    chat_id=TARGET_CHAT,
+                    animation=file_data,
+                    caption=new_caption,
+                )
+            elif msg.voice:  # Голосовые сообщения
+                return await safe_send(
+                    bot.send_voice,
+                    chat_id=TARGET_CHAT,
+                    voice=file_data,
+                    caption=new_caption,
+                )
+        elif msg.text:
+            # Если это просто текст
+            return await safe_send(
+                bot.send_message, chat_id=TARGET_CHAT, text=new_caption
+            )
+        return False
+
+    # Если на вход пришел АЛЬБОМ (медиагруппа)
+    media_album = []
+    text_copied = False
+    downloaded_files = []  # Храним буферы, чтобы они не стерлись из памяти во время отправки
+
+    for m in messages:
+        caption = clean_text(m.caption) if not text_copied else ""
+        if caption:
+            text_copied = True
+
+        file_data = await download_to_memory(app, m)
+        if not file_data:
+            continue
+        downloaded_files.append(file_data)
+
+        if m.photo:
+            media_album.append(
+                InputMediaPhoto(media=file_data, caption=caption)
+            )
+        elif m.video:
+            media_album.append(
+                InputMediaVideo(media=file_data, caption=caption)
+            )
+
+    if media_album:
+        success = await safe_send(
+            bot.send_media_group, chat_id=TARGET_CHAT, media=media_album
+        )
+        return success
+    return False
+
+
+# --- ЧАСТЬ 1: ИСТОРИЯ ---
+async def history_publisher():
+    await asyncio.sleep(10)
+    print("[История] Скрипт запущен.")
+
+    while True:
+        last_sent_id = get_last_sent_id()
+        next_msg_id = last_sent_id + 1
+
+        if next_msg_id in posted_live_ids:
+            print(
+                f"[История] Пост {next_msg_id} уже был опубликован через LIVE. Пропуск."
+            )
+            save_last_sent_id(next_msg_id)
+            continue
+
+        try:
+            message = await app.get_messages(SOURCE_CHAT, next_msg_id)
+
+            if (
+                message
+                and not message.empty
+                and (message.text or message.media)
+            ):
+
+                if message.media_group_id:
+                    album = await app.get_media_group(
+                        SOURCE_CHAT, next_msg_id
+                    )
+                    max_album_id = max(m.id for m in album)
+
+                    print(
+                        f"[История] Публикуем альбом из {len(album)} файлов (ID {next_msg_id} - {max_album_id}) от имени канала..."
+                    )
+                    success = await publish_clean_post(album)
+
+                    if success:
+                        save_last_sent_id(max_album_id)
+                        print(f"[История] Успешно. Ждем {INTERVAL} секунд...")
+                        await asyncio.sleep(INTERVAL)
+                else:
+                    print(
+                        f"[История] Публикуем пост ID {message.id} от имени канала..."
+                    )
+                    success = await publish_clean_post(message)
+                    if success:
+                        save_last_sent_id(message.id)
+                        print(f"[История] Успешно. Ждем {INTERVAL} секунд...")
+                        await asyncio.sleep(INTERVAL)
+            else:
+                save_last_sent_id(next_msg_id)
+                await asyncio.sleep(0.5)
+
+        except Exception as e:
+            print(
+                f"[История] Ожидание новых постов в источнике (ошибка/конец: {e})"
+            )
+            await asyncio.sleep(60)
+
+
+# --- ЧАСТЬ 2: LIVE СЛУШАТЕЛЬ ---
+@app.on_message(filters.chat(SOURCE_CHAT))
+async def live_publisher(client, message: Message):
+    if message.empty or (not message.text and not message.media):
+        return
+
+    posted_live_ids.add(message.id)
+
+    if message.media_group_id:
+        await asyncio.sleep(2)
+        try:
+            album = await app.get_media_group(SOURCE_CHAT, message.id)
+            for m in album:
+                posted_live_ids.add(m.id)
+
+            if message.id == min(m.id for m in album):
+                print(f"[LIVE] Публикуем новый альбом от имени канала...")
+                await publish_clean_post(album)
+        except Exception as e:
+            print(f"[LIVE] Ошибка обработки альбома: {e}")
     else:
-        await callback.answer("❌ Платеж еще не подтвержден.", show_alert=True)
+        print(
+            f"[LIVE] Публикуем одиночный пост ID {message.id} от имени канала..."
+        )
+        await publish_clean_post(message)
 
-@dp.callback_query(F.data == "withdraw")
-async def withdraw(callback: types.CallbackQuery):
-    u = get_user(callback.from_user.id)
-    if u[0] < MIN_WITHDRAW:
-        return await callback.answer(f"⚠️ Минимальный вывод: {MIN_WITHDRAW}₽", show_alert=True)
-    
-    await callback.answer()
-    await callback.message.answer("📝 <b>Заявка на вывод</b>\n\nНапишите ваш номер карты и сумму:")
-    await bot.send_message(ADMIN_ID, f"🔔 <b>НОВАЯ ЗАЯВКА</b>\nID: {callback.from_user.id}\nБаланс: {u[0]}₽")
-
-@dp.callback_query(F.data == "home")
-async def home(callback: types.CallbackQuery):
-    await callback.answer()
-    await start(callback.message, CommandObject(command="start", args=None))
 
 async def main():
-    init_db()
-    await dp.start_polling(bot)
+    print("Запуск...")
+    await app.start()
+    await bot.start()
+    print("Бот и Юзербот успешно запущены!")
+
+    asyncio.create_task(history_publisher())
+    await asyncio.Event().wait()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
