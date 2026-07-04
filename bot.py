@@ -3,6 +3,7 @@ import os
 import uuid
 import re
 import traceback
+
 from pyrogram import Client, filters
 from pyrogram.errors import FloodWait
 from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
@@ -11,21 +12,23 @@ from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 API_ID = 36895411  # Твой API ID
 API_HASH = "c3cba5f8e4f0143ac2976f6459a5b612"  # Твой API HASH
 BOT_TOKEN = "8038462440:AAEoCfxTBFwfJhhDjRRJcOKhB9820rqGs6o"  # Токен бота-паблишера
-SESSION_STRING = "AgIy-rMAIIIXzYvdcANhco5l7O30zrBnbtkgp-RuiY9InOJnsLNDT9Jiuqj-3WT0iSWrB3VYZ_-WpzD0PR1Cg4mpwpSGGbj_YJ9xLfMXT-SlRDR9qyFj-d8wma-93hxSX_mgU2KDEeTYVwcMKu_vjIRhwutuXIE1JRDunrB7su5n4yyBp5KJyhPwt6EXERfCtzjMbcqOFD3jbdN3VUel3gIIXonQ42q2KIg-SZUNSUBJJi5G98UKIjBZO3dLkrKzWUxltG0ipVUx2q5Xf7ju7k8GhgXC2nmNJ7ePxs38BqVNtKkXQki90HnN-l-7BYR-eIvd5j7xjHkWenPevza7qNmFskN2RAAAAAFHgBc7AA"
+SESSION_STRING = "AgIy-rMAIIIXzYvdcANhco5l7O30zrBnbtkgp-RuiY9InOJnsLNDT9Jiuqj-3WT0iSWrB3VYZ_-WpzD0PR1Cg4mpwpSGGbj_YJ9xLfMXT-SlRDR9qyFj-d8wma-93hxSX_mgU2KDEeTYVwcMKu_vjIRhwutuXIE1JRDunrB7su5n4yyBp5KJyhPwt6EXERfCtzjMbcqOFD3jbdN3VUel3gIIXonQ42q2KIg-SZUNSUBJJi5G98UKIjBZO3dLkrKzWUxltG0ipVUx2q5Xf7ju7k8GhgXC2nmNJ7ePxs38BqVNtKkXQki90HnN-l-7BYR-eIvd5j7xjHkWenPevza7qNmFskN2RAAAAAFHgBc7AA"  # Строковая сессия юзербота
 
 SOURCE_CHAT = "zakadrombriya"
 TARGET_CHAT = "mukbang_natik"
-INTERVAL = 180  # 3 минуты
+
+INTERVAL = 180  # 3 минуты (180 секунд)
 # ==============================================================
 
 DB_FILE = "progress.txt"
 TEMP_DIR = "temp_downloads"
 LOG_FILE = "bot_log.txt"
 
+# Создаем папку для временных файлов
 os.makedirs(TEMP_DIR, exist_ok=True)
 
+# Функция для записи логов в файл и в консоль (flush=True пишет мгновенно)
 def log(message):
-    # flush=True заставляет писать лог мгновенно, не ждя переполнения буфера
     print(message, flush=True)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{message}\n")
@@ -33,11 +36,13 @@ def log(message):
 if not all([API_ID, API_HASH, BOT_TOKEN, SESSION_STRING, SOURCE_CHAT, TARGET_CHAT]):
     raise ValueError("❌ Заполни ВСЕ настройки в начале файла bot.py!")
 
+# ==================== КЛИЕНТЫ ====================
 app = Client(name="my_userbot_string", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 bot = Client(name="publisher_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 posted_live_ids = set()
 
+# ==================== ФУНКЦИИ ====================
 def clean_text(text: str) -> str:
     if not text:
         return ""
@@ -62,7 +67,13 @@ def save_last_sent_id(message_id: int):
 async def try_send(action, *args, **kwargs):
     for attempt in range(3):
         try:
-            return await action(*args, **kwargs)
+            # Таймаут 180 секунд (3 минуты). Если зависнет - отменит попытку
+            return await asyncio.wait_for(action(*args, **kwargs), timeout=180.0)
+        except asyncio.TimeoutError:
+            log(f"[❌ Ошибка отправки] Таймаут! Файл отправлялся дольше 180 секунд.")
+            if attempt == 2:
+                return None
+            await asyncio.sleep(2)
         except FloodWait as e:
             log(f"[⚠️ FloodWait] Ждём {e.value} сек...")
             await asyncio.sleep(e.value)
@@ -90,7 +101,7 @@ async def download_to_file(client, message: Message) -> str | None:
         )
         
         if file_path is None:
-            log(f"[⬇️] Пост {message.id}: download_media вернул None (медиа нет?)")
+            log(f"[⬇️] Пост {message.id}: download_media вернул None")
             return None
         
         if os.path.getsize(file_path) == 0:
@@ -126,6 +137,19 @@ async def publish_single(msg: Message):
         log(f"[⚠️] Пост {msg.id}: Нет медиа и нет текста. Пропуск.")
         return False
     
+    # === ПРОВЕРКА РАЗМЕРА ФАЙЛА ===
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    log(f"[ℹ️] Пост {msg.id}: Размер файла: {file_size_mb:.2f} МБ")
+    
+    if file_size_mb > 50:
+        log(f"[⚠️] Пост {msg.id}: Файл больше 50 МБ! Обычные боты не могут отправлять такие файлы. Пропускаем видео.")
+        if caption:
+            caption = caption + "\n\n[⚠️ Видео слишком большое для пересылки ботом (лимит 50 МБ)]"
+            await try_send(bot.send_message, TARGET_CHAT, caption)
+        cleanup_file(file_path)
+        return True # Возвращаем True, чтобы бот пошел дальше
+    # ===============================
+
     try:
         log(f"[📤] Пост {msg.id}: Начинаю отправку медиа в канал...")
         if msg.photo:
@@ -267,7 +291,7 @@ async def history_publisher():
         except Exception as e:
             log(f"[💥] КРИТИЧЕСКАЯ ОШИБКА на посте {next_id}: {e}")
             log(traceback.format_exc())
-            save_last_sent_id(next_id)
+            save_last_sent_id(next_id) # Перепрыгиваем проблемный пост, чтобы не зависать
             await asyncio.sleep(10)
 
 # ==================== LIVE ====================
