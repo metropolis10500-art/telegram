@@ -1,0 +1,14 @@
+{
+  "name": "whisper-bot",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.15.0",
+    "sql.js": "^1.10.3",
+    "express": "^4.19.2",
+    "crypto": "^1.0.1"
+  }
+}
