@@ -1,6 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
-const fs = require('fs'); // Встроенная библиотека для файлов! Никаких npm install!
+const fs = require('fs');
 
 // === НАСТРОЙКИ ===
 const BOT_TOKEN = '8038462440:AAEoCfxTBFwfJhhDjRRJcOKhB9820rqGs6o';
@@ -11,8 +11,10 @@ const DB_FILE = './database.json';
 const bot = new Telegraf(BOT_TOKEN);
 const app = express();
 
+// === ХРАНИЛИЩЕ СОСТОЯНИЙ (Вместо сессий, чтобы не качать лишние пакеты) ===
+const userState = {}; 
+
 // === БАЗА ДАННЫХ (JSON) ===
-// Если файла нет, создаем пустую структуру
 if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, messages: [] }));
 }
@@ -37,7 +39,7 @@ function registerUser(tg_id, username, first_name) {
 
 function addMessage(target_id, text, sender_hint) {
     const db = loadDB();
-    const id = Date.now(); // Уникальный ID сообщения на основе времени
+    const id = Date.now(); 
     db.messages.push({ id, target_id, text, sender_hint, is_read: false, hint_bought: false, reveal_bought: false });
     saveDB(db);
 }
@@ -78,68 +80,59 @@ bot.start(async (ctx) => {
     const targetId = parseInt(payload.replace('w_', ''));
     const db = loadDB();
     const targetUser = db.users[targetId];
-    if (!targetUser) return ctx.reply('Этот пользователь не пользуется ботом :(');
+    if (!targetUser) return ctx.reply('Этот пользователь еще не в игре :(');
     
-    ctx.session = ctx.session || {};
-    ctx.session.targetId = targetId;
+    // Сохраняем состояние юзера: он сейчас пишет кому-то
+    userState[userId] = { targetId: targetId };
     
     await ctx.reply(
-      `🤫 <b>Напиши анонимное сообщение для ${targetUser.first_name}</b>\n\nТвое имя останется в секрете!`,
+      `🤫 <b>Напиши анонимное сообщение для ${targetUser.first_name}</b>\n\n` +
+      `Твое имя останется в строжайшем секрете. Пиши всё, что думаешь!\n\n` +
+      `✍️ Пиши текст ниже:`,
       { parse_mode: 'HTML', reply_markup: Markup.removeKeyboard() }
     );
   } else {
+    // Очищаем состояние, если юзер просто перезапустил бота
+    delete userState[userId];
+    
     const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
     await ctx.reply(
-      `👋 <b>Добро пожаловать в Шёпот!</b>\n\nТвоя личная ссылка:\n<code>${link}</code>\n\nСкинь её в Stories или Bio! 👇`,
+      `👋 <b>Добро пожаловать в Шёпот!</b>\n\n` +
+      `Это место, где рождаются секреты и интриги.\n\n` +
+      `👇 <b>Что тут есть:</b>\n` +
+      `🤫 100% анонимные сообщения\n` +
+      `🕵️‍♂️ Детективный режим (узнай отправителя!)\n` +
+      `👑 VIP-статус для лучших сыщиков\n\n` +
+      `🔗 <b>Твоя личная ссылка:</b>\n<code>${link}</code>\n\n` +
+      `⚡️ <i>Скопируй её и закинь в Bio или Stories!</i>`,
       { parse_mode: 'HTML', ...getMainMenu() }
     );
   }
 });
 
-bot.on('text', async (ctx) => {
-  if (!ctx.session || !ctx.session.targetId) return;
-  
-  const targetId = ctx.session.targetId;
-  const text = ctx.message.text;
-  
-  if (text.length > 200) return ctx.reply('Слишком длинное! Максимум 200 символов.');
-
-  const senderName = ctx.from.first_name || 'Аноним';
-  const hint = `Имя начинается на: <b>${senderName.charAt(0).toUpperCase()}...</b>`;
-
-  addMessage(targetId, text, hint);
-  ctx.session.targetId = null; 
-
-  await ctx.reply('✅ Доставлено! Никто не узнает, кто отправил 🤫', getMainMenu());
-
-  try {
-    await bot.telegram.sendMessage(targetId, '🤫 <b>Тебе пришло новое анонимное сообщение!</b>', {
-      parse_mode: 'HTML',
-      reply_markup: Markup.inlineKeyboard([[Markup.button.callback('📨 Прочитать', 'read_messages')]])
-    });
-  } catch (e) {}
-});
-
-// === КНОПКИ МЕНЮ ===
+// ==========================================================
+// --- КНОПКИ МЕНЮ (ОБЯЗАТЕЛЬНО ДО bot.on('text')) !!! ---
+// ==========================================================
 
 bot.hears('🔗 Моя ссылка', (ctx) => {
+  delete userState[ctx.from.id]; // Сбрасываем режим написания
   const link = `https://t.me/${ctx.botInfo.username}?start=w_${ctx.from.id}`;
-  ctx.reply(`🔗 <b>Твоя ссылка:</b>\n\n<code>${link}</code>`, { parse_mode: 'HTML' });
+  ctx.reply(`🔗 <b>Твоя ссылка для анонимных сообщений:</b>\n\n<code>${link}</code>\n\nПоделись ей!`, { parse_mode: 'HTML' });
 });
 
 bot.hears('📨 Мои сообщения', (ctx) => {
+  delete userState[ctx.from.id]; // Сбрасываем режим написания
   const msgs = getUnreadMessages(ctx.from.id);
-  if (msgs.length === 0) return ctx.reply('📭 Нет новых сообщений.');
+  if (msgs.length === 0) return ctx.reply('📭 У тебя нет новых сообщений. Поделись ссылкой!');
 
-  ctx.session = ctx.session || {};
-  ctx.session.msgQueue = msgs.map(m => m.id);
-
+  userState[ctx.from.id] = { msgQueue: msgs.map(m => m.id) };
   showNextMessage(ctx);
 });
 
 bot.hears('💎 VIP Статус', (ctx) => {
+  delete userState[ctx.from.id]; // Сбрасываем режим написания
   ctx.reply(
-    `👑 <b>VIP Статус</b>\n\n✅ Бесплатное разоблачение отправителей\n✅ Значок VIP\n\nСтоимость: <b>299 ₽ / месяц</b>`,
+    `👑 <b>VIP Статус</b>\n\nХочешь всегда знать, кто тебе пишет?\n\nПреимущества VIP:\n✅ Бесплатное полное разоблачение отправителей\n✅ Значок VIP в профиле\n✅ Приоритетная поддержка\n\nСтоимость: <b>299 ₽ / месяц</b>`,
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
@@ -149,23 +142,70 @@ bot.hears('💎 VIP Статус', (ctx) => {
   );
 });
 
-// === ИНЛАЙН КНОПКИ ===
+bot.hears('❓ Помощь', (ctx) => {
+  delete userState[ctx.from.id]; // Сбрасываем режим написания
+  ctx.reply(
+    `<b>Как пользоваться ботом:</b>\n\n` +
+    `1. Нажми «🔗 Моя ссылка» и скопируй её.\n` +
+    `2. Отправь эту ссылку друзьям или опубликуй у себя в профиле/Stories.\n` +
+    `3. Люди будут переходить и писать тебе анонимные сообщения.\n` +
+    `4. Нажми «📨 Мои сообщения», чтобы прочитать их.\n` +
+    `5. Если хочешь узнать, кто автор — покупай подсказки или полное разоблачение! 🕵️‍♂️`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+// --- ОБРАБОТКА ТЕКСТА (Отправка анонимного сообщения) ---
+
+bot.on('text', async (ctx) => {
+  const userId = ctx.from.id;
+  const state = userState[userId];
+  
+  // Если юзер не в режиме отправки сообщения, просим использовать меню
+  if (!state || !state.targetId) {
+      return ctx.reply('Выбери действие в меню ниже 👇', getMainMenu());
+  }
+  
+  const targetId = state.targetId;
+  const text = ctx.message.text;
+  
+  if (text.length > 200) return ctx.reply('Слишком длинное сообщение! Максимум 200 символов.');
+
+  const senderName = ctx.from.first_name || 'Аноним';
+  const hint = `Имя начинается на: <b>${senderName.charAt(0).toUpperCase()}...</b>`;
+
+  addMessage(targetId, text, hint);
+  delete userState[userId]; // Сбрасываем состояние после отправки
+
+  await ctx.reply('✅ Сообщение доставлено! Никто не узнает, кто его отправил 🤫', getMainMenu());
+
+  try {
+    await bot.telegram.sendMessage(targetId, '🤫 <b>Тебе пришло новое анонимное сообщение!</b>\nНажми кнопку ниже, чтобы прочитать.', {
+      parse_mode: 'HTML',
+      reply_markup: Markup.inlineKeyboard([[Markup.button.callback('📨 Прочитать', 'read_messages')]])
+    });
+  } catch (e) {}
+});
+
+// === ИНЛАЙН КНОПКИ (Под сообщениями) ===
 
 bot.action('read_messages', (ctx) => {
   const msgs = getUnreadMessages(ctx.from.id);
   if (msgs.length === 0) return ctx.answerCbQuery('Сообщений нет!');
   
-  ctx.session = ctx.session || {};
-  ctx.session.msgQueue = msgs.map(m => m.id);
+  userState[ctx.from.id] = { msgQueue: msgs.map(m => m.id) };
   showNextMessage(ctx);
 });
 
 function showNextMessage(ctx) {
-  if (!ctx.session.msgQueue || ctx.session.msgQueue.length === 0) {
+  const userId = ctx.from.id;
+  const state = userState[userId];
+
+  if (!state || !state.msgQueue || state.msgQueue.length === 0) {
     return ctx.reply('📭 Все сообщения прочитаны!', getMainMenu());
   }
 
-  const msgId = ctx.session.msgQueue.shift();
+  const msgId = state.msgQueue.shift();
   const msg = getMessageById(msgId);
   
   if (!msg) return showNextMessage(ctx);
@@ -173,7 +213,7 @@ function showNextMessage(ctx) {
   markAsRead(msg.id);
 
   const db = loadDB();
-  const user = db.users[ctx.from.id];
+  const user = db.users[userId];
   const isVip = user && user.is_vip && user.vip_expiry > Date.now();
 
   if (isVip || msg.reveal_bought) {
@@ -184,7 +224,7 @@ function showNextMessage(ctx) {
     return showNextMessage(ctx);
   } else {
     ctx.reply(
-      `🤫 <b>Анонимное сообщение:</b>\n\n"${msg.text}"\n\nХочешь узнать, кто это?`,
+      `🤫 <b>Анонимное сообщение:</b>\n\n"${msg.text}"\n\nХочешь узнать, кто это написал?`,
       { parse_mode: 'HTML', ...Markup.inlineKeyboard([
         [Markup.button.url('🔍 Подсказка (50 ₽)', generatePaymentLink(ctx.from.id, `hint_${msg.id}`, 50.00))],
         [Markup.button.url('🕵️ Кто это? (150 ₽)', generatePaymentLink(ctx.from.id, `reveal_${msg.id}`, 150.00))],
@@ -205,7 +245,7 @@ function generatePaymentLink(userId, label, amount) {
   return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=shop&targets=WhisperBot&paymentType=AC&amount=${amount}&label=${userId}_${label}`;
 }
 
-// Веб-сервер (Заглушка, чтобы хостинг не ругался на пустой порт)
+// Веб-сервер (Заглушка)
 app.get('/', (req, res) => res.send('Bot is running!'));
 
 // === ЗАПУСК ===
