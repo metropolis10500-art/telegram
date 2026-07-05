@@ -2,12 +2,12 @@ const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 
 // === НАСТРОЙКИ ===
-const BOT_TOKEN = '8878972156:AAHIvVDWZvZxGDYE0CqUeOdHTGXoTKOYiSI';
+const BOT_TOKEN = '8878972156:AAHIvVDWZvZxGDYE0CqUeOdHTGXoTKOYiSI'; // ОБЯЗАТЕЛЬНО ЗАМЕНИ!
 const DB_FILE = './database.json';
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// === ХРАНИЛИЩЕ СОСТОЯНИЙ ===
+// === ХРАНИЛИЩЕ СОСТОЯНИЙ (Для работы меню и отправки без багов) ===
 const userState = {}; 
 
 // === БАЗА ДАННЫХ (JSON) ===
@@ -100,16 +100,18 @@ bot.start(async (ctx) => {
   }
 });
 
-// === КНОПКИ МЕНЮ ===
+// ==========================================================
+// --- КНОПКИ МЕНЮ (ОБЯЗАТЕЛЬНО ДО bot.on('text')) !!! ---
+// ==========================================================
 
 bot.hears('🔗 Моя ссылка', (ctx) => {
-  delete userState[ctx.from.id];
+  delete userState[ctx.from.id]; 
   const link = `https://t.me/${ctx.botInfo.username}?start=w_${ctx.from.id}`;
-  ctx.reply(`🔗 <b>Твоя ссылка:</b>\n\n<code>${link}</code>`, { parse_mode: 'HTML' });
+  ctx.reply(`🔗 <b>Твоя ссылка:</b>\n\n<code>${link}</code>\n\nПоделись ей!`, { parse_mode: 'HTML' });
 });
 
 bot.hears('📨 Мои сообщения', (ctx) => {
-  delete userState[ctx.from.id];
+  delete userState[ctx.from.id]; 
   const msgs = getUnreadMessages(ctx.from.id);
   if (msgs.length === 0) return ctx.reply('📭 У тебя нет новых сообщений.');
 
@@ -118,7 +120,7 @@ bot.hears('📨 Мои сообщения', (ctx) => {
 });
 
 bot.hears('💎 VIP Статус', (ctx) => {
-  delete userState[ctx.from.id];
+  delete userState[ctx.from.id]; 
   ctx.reply(
     `👑 <b>VIP Статус</b>\n\nХочешь всегда знать, кто тебе пишет?\n\n✅ Бесплатное разоблачение\n✅ Значок VIP\n\nСтоимость: <b>299 Stars ⭐️</b> в месяц`,
     {
@@ -131,7 +133,7 @@ bot.hears('💎 VIP Статус', (ctx) => {
 });
 
 bot.hears('❓ Помощь', (ctx) => {
-  delete userState[ctx.from.id];
+  delete userState[ctx.from.id]; 
   ctx.reply(
     `<b>Как пользоваться:</b>\n\n` +
     `1. Нажми «🔗 Моя ссылка» и скопируй.\n` +
@@ -142,7 +144,7 @@ bot.hears('❓ Помощь', (ctx) => {
   );
 });
 
-// --- ОБРАБОТКА ТЕКСТА ---
+// --- ОБРАБОТКА ТЕКСТА (Отправка анонимного сообщения) ---
 
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
@@ -173,7 +175,7 @@ bot.on('text', async (ctx) => {
   } catch (e) {}
 });
 
-// === ИНЛАЙН КНОПКИ (Чтение и Покупка) ===
+// === ИНЛАЙН КНОПКИ (Чтение и Покупки) ===
 
 bot.action('read_messages', (ctx) => {
   const msgs = getUnreadMessages(ctx.from.id);
@@ -234,9 +236,9 @@ bot.action('buy_vip', async (ctx) => {
         title: '👑 VIP Статус (1 месяц)',
         description: 'Бесплатное разоблачение всех анонимов на 30 дней!',
         payload: 'vip_purchase',
-        currency: 'XTR', // Специальная валюта Telegram Stars
-        prices: [{ label: 'VIP', amount: 299 }], // Цена в Звездах
-        provider_token: '' // Должно быть пусто для Stars!
+        currency: 'XTR',
+        prices: [{ label: 'VIP', amount: 299 }]
+        // provider_token УДАЛЕН! Это обязательно для Stars.
     });
 });
 
@@ -249,8 +251,8 @@ bot.action(/^buy_hint_(.+)$/, async (ctx) => {
         description: 'Узнать первую букву имени анонима',
         payload: `hint_${msgId}`,
         currency: 'XTR',
-        prices: [{ label: 'Подсказка', amount: 50 }],
-        provider_token: ''
+        prices: [{ label: 'Подсказка', amount: 50 }]
+        // provider_token УДАЛЕН!
     });
 });
 
@@ -263,14 +265,14 @@ bot.action(/^buy_reveal_(.+)$/, async (ctx) => {
         description: 'Узнать, кто отправил это сообщение',
         payload: `reveal_${msgId}`,
         currency: 'XTR',
-        prices: [{ label: 'Разоблачение', amount: 150 }],
-        provider_token: ''
+        prices: [{ label: 'Разоблачение', amount: 150 }]
+        // provider_token УДАЛЕН!
     });
 });
 
-// Подтверждение предзаказа (Telegram ждет этого от бота)
+// Подтверждение предзаказа (Telegram ждет этого от бота перед оплатой)
 bot.on('pre_checkout_query', (ctx) => {
-    ctx.answerPreCheckoutQuery(true); // Подтверждаем оплату
+    ctx.answerPreCheckoutQuery(true); 
 });
 
 // Успешная оплата
