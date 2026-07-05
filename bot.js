@@ -234,7 +234,8 @@ bot.action('skip_msg', (ctx) => {
 // === ПЛАТЕЖНАЯ СИСТЕМА ЮMONEY API ===
 
 function generatePaymentLink(amount, label) {
-  return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=shop&targets=WhisperBot&paymentType=AC&amount=${amount}&label=${label}`;
+  // Поменяли shop на small!
+  return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=small&targets=WhisperBot&paymentType=AC&amount=${amount}&label=${label}`;
 }
 
 // Функция проверки оплаты через API
