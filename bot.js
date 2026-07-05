@@ -41,15 +41,16 @@ function registerUser(tg_id, username, first_name) {
         db.users[tg_id] = { 
             username, first_name, 
             is_vip: false, vip_expiry: 0, is_premium: false, premium_expiry: 0, reveal_credits: 0, 
-            last_spin_time: 0, free_keys: 0, ref_count: 0, aura_score: 0, aura_title: "Новичок", referred_by: null
+            last_spin_time: 0, free_keys: 0, ref_count: 0, msg_count: 0, reputation_title: "Гость", referred_by: null
         }; 
         scheduleSave(); 
     }
 }
 
-function addMessage(target_id, text, sender_name, sender_photo, aura) { 
+function addMessage(target_id, text, sender_name, sender_photo) { 
     const id = Date.now(); 
-    db.messages[id] = { id, target_id, text, sender_name, sender_photo, aura, is_read: false, reveal_bought: false }; 
+    // Убрали ауру, добавили is_read
+    db.messages[id] = { id, target_id, text, sender_name, sender_photo, is_read: false, reveal_bought: false }; 
     scheduleSave(); return id; 
 }
 
@@ -58,21 +59,18 @@ function getMessageById(id) { return db.messages[id]; }
 function markAsRead(id) { const m = db.messages[id]; if (m) { m.is_read = true; scheduleSave(); } }
 
 // === УТИЛИТЫ ===
-function detectAura(text) { const t = text.toLowerCase(); if (t.match(/люблю|нрав|красив|горяч/)) return "🔥 Пылкая"; if (t.match(/ненави|дурак|туп/)) return "⚡ Грозовая"; if (t.match(/скуч|грус/)) return "🌧 Туманная"; return "🌙 Лунная"; }
-
-function updateAuraTitle(user) {
-    if (user.aura_score >= 50) user.aura_title = "🎭 Магистр Маскарада";
-    else if (user.aura_score >= 20) user.aura_title = "💀 Лорд Тайн";
-    else if (user.aura_score >= 10) user.aura_title = "👁 Искатель";
-    else if (user.aura_score >= 5) user.aura_title = "🦇 Блуждающий";
-    else user.aura_title = "🌑 Новичок";
+function updateReputation(user) {
+    if (user.msg_count >= 20) user.reputation_title = "🎭 Магистр Маскарада";
+    else if (user.msg_count >= 10) user.reputation_title = "💀 Лорд Тайн";
+    else if (user.msg_count >= 5) user.reputation_title = "👁 Искатель";
+    else user.reputation_title = "🌑 Гость";
     scheduleSave();
 }
 
 function getMainMenu() { 
     return Markup.keyboard([
-        ['📨 Сообщения', '🎡 Фортуна'], 
-        ['🔗 Моя ссылка', '🎭 Магазин']
+        ['📨 Послания', '🎭 Снять маску'], 
+        ['🎡 Фортуна', '👤 Профиль']
     ]).resize(); 
 }
 
@@ -103,7 +101,7 @@ let adminState = {};
 
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
-  registerUser(userId, ctx.from.username || 'no_user', ctx.from.first_name || 'Аноним');
+  registerUser(userId, ctx.from.username || 'no_user', ctx.from.first_name || 'Странник');
   const payload = ctx.startPayload;
 
   // Рефералка
@@ -115,14 +113,14 @@ bot.start(async (ctx) => {
             db.users[refId].ref_count++;
             if (db.users[refId].ref_count % 3 === 0) {
                 db.users[refId].free_keys++;
-                bot.telegram.sendMessage(refId, '🎉 Друг перешел по ссылке! Ты получил 1 Ключ!').catch(()=>{});
+                bot.telegram.sendMessage(refId, '🎉 Твой друг перешел по ссылке! Ты получил 1 Ключ Маскарада!').catch(()=>{});
             } else {
-                bot.telegram.sendMessage(refId, '👥 Новый друг! Осталось ' + (3 - (db.users[refId].ref_count % 3)) + ' чел. для Ключа.').catch(()=>{});
+                bot.telegram.sendMessage(refId, '👥 Новый друг на балу! Осталось ' + (3 - (db.users[refId].ref_count % 3)) + ' чел. для Ключа.').catch(()=>{});
             }
             scheduleSave();
         }
     }
-    return ctx.reply('🎭 Добро пожаловать на бал! Твой друг пригласил тебя.', { parse_mode: 'HTML', ...getMainMenu() });
+    return ctx.reply('🎭 Добро пожаловать! Твой друг пригласил тебя на бал Маскарада.', { parse_mode: 'HTML', ...getMainMenu() });
   }
 
   // Отправка сообщения
@@ -133,43 +131,48 @@ bot.start(async (ctx) => {
     
     ctx.session = { targetId: targetId, sender_step: 'ask_name' };
     return ctx.reply(
-      `🎭 <b>Оставь тайное послание для ${targetUser.first_name}</b>\n\nНапиши свое имя и фото. Твоя личность останется в секрете!\n\n👤 Как тебя зовут:`,
+      `🎭 <b>Оставь послание для ${targetUser.first_name}</b>\n\nНапиши свое имя и фото. Получатель прочитает текст бесплатно, но твое лицо будет скрыто за маской!\n\n👤 Твое имя:`,
       { parse_mode: 'HTML', reply_markup: Markup.removeKeyboard() }
     );
   }
 
   // Обычный вход
   ctx.session = {};
-  const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
   const user = db.users[userId];
   const badge = user.is_premium ? '👑' : (user.is_vip ? '💎' : '');
   
   await ctx.reply(
-    `👋 <b>Добро пожаловать на бал, ${badge} ${ctx.from.first_name}!</b>\n\n` +
-    `🎭 Твоя аура: <b>${user.aura_title}</b> (${user.aura_score} очков)\n🔑 Бесплатных ключей: <b>${user.free_keys}</b>\n\n` +
-    `📱 Кидай ссылку в соцсети. Люди будут писать тайны.\n🎭 Все авторы в масках. Крути Фортуна или покупай ключи!`,
+    `👋 <b>Добро пожаловать на бал, ${badge} ${user.first_name}!</b>\n\n` +
+    `Это Шёпот — здесь люди пишут тебе тайные послания.\n\n` +
+    `📩 Тексты ты читаешь <b>бесплатно</b>.\n` +
+    `🎭 Но все отправители скрыты масками. Кто-то из них — твой тайный поклонник!\n` +
+    `🔑 Используй <b>Ключ Маскарада</b>, чтобы снять маску и увидеть лицо автора.\n\n` +
+    `🔑 Твоих ключей: <b>${user.free_keys}</b>`,
     { parse_mode: 'HTML', ...getMainMenu() }
   );
 });
 
 // --- КНОПКИ МЕНЮ ---
-bot.hears('📨 Сообщения', (ctx) => {
+bot.hears('📨 Послания', (ctx) => {
   const msgs = getUnreadMessages(ctx.from.id);
-  if (msgs.length === 0) return ctx.reply('📭 Нет сообщений. Поделись ссылкой!');
+  if (msgs.length === 0) return ctx.reply('📭 Пока пусто. Поделись ссылкой, чтобы получать послания!');
   ctx.session = ctx.session || {};
   ctx.session.msgQueue = msgs.map(m => m.id);
   showNextMessage(ctx);
 });
 
-bot.hears('🔗 Моя ссылка', (ctx) => {
-  const userId = ctx.from.id;
-  const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
-  const refLink = `https://t.me/${ctx.botInfo.username}?start=r_${userId}`;
-  ctx.reply(
-    `🔗 <b>Ссылка для соцсетей:</b>\n<code>${link}</code>\n\n` +
-    `👥 <b>Реферальная ссылка (для ключей):</b>\n<code>${refLink}</code>\n\nКаждые 3 друга = 1 Ключ Маскарада!`,
-    { parse_mode: 'HTML' }
-  );
+bot.hears('🎭 Снять маску', (ctx) => {
+  const user = db.users[ctx.from.id];
+  const hasKeys = user.free_keys > 0 || (user.is_vip && user.reveal_credits > 0) || (user.is_premium && user.premium_expiry > Date.now());
+  
+  if (hasKeys) {
+    ctx.reply('🎭 У тебя есть Ключи! Нажми кнопку "🎭 Снять маску" под любым посланием, которое читаешь, чтобы увидеть автора.', { parse_mode: 'HTML' });
+  } else {
+    ctx.reply(
+      `🎭 <b>У тебя 0 Ключей Маскарада</b>\n\nЧтобы узнать, кто скрывается за маской, нужны ключи. Их можно получить так:\n\n🎡 Крутить колесо Фортуны (бесплатно раз в сутки)\n👥 Пригласить 3 друзей по ссылке в Профиле\n💰 Купить в Магазине`,
+      { parse_mode: 'HTML' }
+    );
+  }
 });
 
 bot.hears('🎡 Фортуна', (ctx) => {
@@ -182,7 +185,7 @@ bot.hears('🎡 Фортуна', (ctx) => {
     return ctx.reply(`⏳ Колесо отдыхает.\n\nСледующий спин через <b>${timeLeft} ч.</b>`, { parse_mode: 'HTML' });
   }
 
-  ctx.reply('🎡 <b>Колесо Фортуны!</b>\n\nКрути раз в сутки!', {
+  ctx.reply('🎡 <b>Колесо Фортуны!</b>\n\nКрути раз в сутки! Выпадут ключи или аура.', {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
       [Markup.button.callback('🎡 Крутить!', 'spin_wheel')]
@@ -190,17 +193,29 @@ bot.hears('🎡 Фортуна', (ctx) => {
   });
 });
 
-bot.hears('🎭 Магазин', (ctx) => {
-  const user = db.users[ctx.from.id];
+bot.hears('👤 Профиль', (ctx) => {
+  const user = db.users[userId];
+  const link = `https://t.me/${ctx.botInfo.username}?start=r_${ctx.from.id}`;
   ctx.reply(
-    `🎭 <b>Магазин Маскарада</b>\n\n🔑 У тебя ключей: <b>${user.free_keys}</b>`,
+    `👤 <b>Твой профиль</b>\n\n` +
+    `🎭 Репутация: <b>${user.reputation_title}</b>\n` +
+    `📩 Получено посланий: <b>${user.msg_count}</b>\n` +
+    `🔑 Ключей Маскарада: <b>${user.free_keys}</b>\n` +
+    `👥 Друзей приглашено: <b>${user.ref_count}</b>\n\n` +
+    `🔗 <b>Твоя ссылка:</b>\n<code>${link}</code>\n<i>Каждые 3 друга = 1 бесплатный Ключ!</i>`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+bot.hears('💰 Магазин', (ctx) => {
+  ctx.reply(
+    `💰 <b>Магазин Маскарада</b>\n\nВыбери, что тебе нужно:`,
     { 
       parse_mode: 'HTML', 
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('🎭 Снять маску (1 Ключ)', 'use_key')],
-        [Markup.button.callback('🔑 Купить 1 Ключ (149 ₽)', 'shop_reveal')],
-        [Markup.button.callback('💎 VIP — 5 ключей (399 ₽)', 'shop_vip')],
-        [Markup.button.callback('👑 PREMIUM — Безлимит (799 ₽)', 'shop_premium')]
+        [Markup.button.callback('🔑 Ключ Маскарада (149 ₽)', 'shop_reveal')],
+        [Markup.button.callback('💎 VIP Статус (399 ₽)', 'shop_vip')],
+        [Markup.button.callback('👑 PREMIUM Статус (799 ₽)', 'shop_premium')]
       ])
     }
   );
@@ -212,7 +227,7 @@ bot.on('photo', async (ctx) => {
   const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
   ctx.session.sender_photo = photoId;
   ctx.session.sender_step = 'ask_message';
-  await ctx.reply('✅ Фото в маске! Теперь напиши послание (текст):');
+  await ctx.reply('✅ Фото получено! Теперь напиши послание (текст):');
 });
 
 bot.on('text', async (ctx) => {
@@ -236,37 +251,34 @@ bot.on('text', async (ctx) => {
     }
   }
 
-  // Шаг 1: Имя
   if (ctx.session.sender_step === 'ask_name') {
     ctx.session.sender_name = text;
     ctx.session.sender_step = 'ask_photo';
-    return ctx.reply('📸 Прикрепи фото (картинкой). Оно будет скрыто!');
+    return ctx.reply('📸 Прикрепи фото (картинкой). Оно будет скрыто за маской!');
   }
 
-  // Шаг 3: Текст сообщения
   if (ctx.session.sender_step === 'ask_message') {
     const targetId = ctx.session.targetId;
     if (text.length > 200) return ctx.reply('Максимум 200!');
-    const aura = detectAura(text);
-    const msgId = addMessage(targetId, text, ctx.session.sender_name, ctx.session.sender_photo, aura);
+    const msgId = addMessage(targetId, text, ctx.session.sender_name, ctx.session.sender_photo);
     
-    db.users[targetId].aura_score++;
-    updateAuraTitle(db.users[targetId]);
+    db.users[targetId].msg_count++;
+    updateReputation(db.users[targetId]);
 
     ctx.session = {};
     await ctx.reply('✅ Тайна доставлена! Маска на месте 🎭', getMainMenu());
     try {
-      await bot.telegram.sendMessage(targetId, '🤫 <b>Новая тайна от незнакомца!</b>', { 
+      await bot.telegram.sendMessage(targetId, '🤫 <b>Тебе пришло новое послание от тайного гостя!</b>', { 
         parse_mode: 'HTML', 
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('📨 Читать', `read_${msgId}`)]
+          [Markup.button.callback('📨 Прочитать', `read_${msgId}`)]
         ])
       });
     } catch (e) {}
   }
 });
 
-// === ЧТЕНИЕ СООБЩЕНИЙ (ИСПРАВЛЕНО БЕЗ ОШИБОК СКОБОК) ===
+// === ЧТЕНИЕ СООБЩЕНИЙ (Текст БЕСПЛАТНО, Маска ПЛАТНО) ===
 bot.action('read_messages', (ctx) => { 
   const msgs = getUnreadMessages(ctx.from.id); 
   if (msgs.length === 0) return ctx.answerCbQuery('Пусто!'); 
@@ -280,48 +292,19 @@ bot.action(/^read_(.+)$/, (ctx) => {
   const msg = getMessageById(parseInt(msgId)); 
   if (!msg) return ctx.answerCbQuery('Ошибка'); 
   markAsRead(msg.id); 
-  
-  const user = db.users[ctx.from.id]; 
-  const isVip = user.is_vip && user.vip_expiry > Date.now(); 
-  const isPremium = user.is_premium && user.premium_expiry > Date.now(); 
-  const hasAccess = isPremium || (isVip && user.reveal_credits > 0) || msg.reveal_bought || user.free_keys > 0;
-
-  if (hasAccess) { 
-    if (isVip && !isPremium) { user.reveal_credits--; } 
-    else if (!msg.reveal_bought && !isPremium) { user.free_keys--; } 
-    scheduleSave(); 
-    ctx.answerCbQuery(); 
-    ctx.replyWithPhoto(msg.sender_photo, { 
-      caption: `🤫 Послание:\n📊 Аура: <b>${msg.aura}</b>\n\n"${msg.text}"\n\n🎭 <b>Маска снята:</b> ${msg.sender_name}`, 
-      parse_mode: 'HTML' 
-    }); 
-  } else { 
-    ctx.answerCbQuery(); 
-    ctx.reply(
-      `🤫 Послание:\n📊 Аура: <b>${msg.aura}</b>\n\n"${msg.text}"\n\n<i>🎭 Автор в маске. Используй Ключ!</i>`, 
-      { 
-        parse_mode: 'HTML', 
-        ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback('🎭 Исп. Ключ', `use_key_${msg.id}`), 
-            Markup.button.callback('🔑 Купить ключ', `buy_reveal_${msg.id}`)
-          ],
-          [
-            Markup.button.callback('➡️ Далее', 'skip_msg')
-          ]
-        ]) 
-      }
-    ); 
-  }
+  showSingleMessage(ctx, msg);
 });
 
 function showNextMessage(ctx) { 
-  if (!ctx.session.msgQueue || ctx.session.msgQueue.length === 0) return ctx.reply('📭 Конец!', { reply_markup: getMainMenu() }); 
+  if (!ctx.session.msgQueue || ctx.session.msgQueue.length === 0) return ctx.reply('📭 Всё прочитано!', { reply_markup: getMainMenu() }); 
   const msgId = ctx.session.msgQueue.shift(); 
   const msg = getMessageById(msgId); 
   if (!msg) return showNextMessage(ctx); 
   markAsRead(msg.id); 
+  showSingleMessage(ctx, msg);
+}
 
+function showSingleMessage(ctx, msg) {
   const user = db.users[ctx.from.id]; 
   const isVip = user.is_vip && user.vip_expiry > Date.now(); 
   const isPremium = user.is_premium && user.premium_expiry > Date.now(); 
@@ -331,24 +314,20 @@ function showNextMessage(ctx) {
     if (isVip && !isPremium) { user.reveal_credits--; } 
     else if (!msg.reveal_bought && !isPremium) { user.free_keys--; } 
     scheduleSave(); 
+    ctx.answerCbQuery(); 
     ctx.replyWithPhoto(msg.sender_photo, { 
-      caption: `🤫 Послание:\n📊 Аура: <b>${msg.aura}</b>\n\n"${msg.text}"\n\n🎭 <b>Маска снята:</b> ${msg.sender_name}`, 
+      caption: `📩 <b>Послание:</b>\n"${msg.text}"\n\n🎭 <b>Маска снята! Это:</b> ${msg.sender_name}`, 
       parse_mode: 'HTML' 
     }); 
-    return showNextMessage(ctx); 
   } else { 
+    ctx.answerCbQuery(); 
     ctx.reply(
-      `🤫 Послание:\n📊 Аура: <b>${msg.aura}</b>\n\n"${msg.text}"\n\n<i>🎭 Автор в маске.</i>`, 
+      `📩 <b>Послание:</b>\n"${msg.text}"\n\n🎭 <i>Отправитель скрыт за маской. Хочешь узнать, кто этот тайный гость и увидеть фото?</i>`, 
       { 
         parse_mode: 'HTML', 
         ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback('🎭 Исп. Ключ', `use_key_${msg.id}`), 
-            Markup.button.callback('🔑 Купить', `buy_reveal_${msg.id}`)
-          ],
-          [
-            Markup.button.callback('➡️ Далее', 'skip_msg')
-          ]
+          [Markup.button.callback('🎭 Снять маску (1 Ключ)', `use_key_${msg.id}`)],
+          [Markup.button.callback('🔑 Купить ключи', `buy_reveal_${msg.id}`), Markup.button.callback('➡️ Далее', 'skip_msg')]
         ]) 
       }
     ); 
@@ -358,56 +337,43 @@ function showNextMessage(ctx) {
 bot.action('skip_msg', (ctx) => { ctx.answerCbQuery(); showNextMessage(ctx); });
 
 // === ИСПОЛЬЗОВАНИЕ КЛЮЧЕЙ ===
-bot.action('use_key', (ctx) => { 
-  const user = db.users[ctx.from.id]; 
-  if (user.free_keys <= 0) return ctx.answerCbQuery('Нет ключей!'); 
-  const m = getUnreadMessages(ctx.from.id)[0]; 
-  if(!m) return ctx.answerCbQuery('Нет сообщений!'); 
-  user.free_keys--; 
-  m.reveal_bought = true; 
-  scheduleSave(); 
-  ctx.answerCbQuery(); 
-  ctx.replyWithPhoto(m.sender_photo, { caption: `🎭 Маска снята: ${m.sender_name}\n\n"${m.text}"`, parse_mode: 'HTML' }); 
-});
-
 bot.action(/^use_key_(.+)$/, (ctx) => { 
   const id = ctx.match[1]; 
   const user = db.users[ctx.from.id]; 
-  if (user.free_keys <= 0) return ctx.answerCbQuery('Нет ключей!'); 
+  if (user.free_keys <= 0) return ctx.answerCbQuery('У тебя 0 ключей! Купи в Магазине.'); 
   const m = getMessageById(parseInt(id)); 
   if(!m) return ctx.answerCbQuery('Ошибка'); 
   user.free_keys--; 
   m.reveal_bought = true; 
   scheduleSave(); 
   ctx.answerCbQuery(); 
-  ctx.replyWithPhoto(m.sender_photo, { caption: `🎭 Маска снята: ${m.sender_name}\n\n"${m.text}"`, parse_mode: 'HTML' }); 
+  ctx.replyWithPhoto(m.sender_photo, { caption: `🎭 <b>Маска снята! Это:</b> ${m.sender_name}\n\n"${m.text}"`, parse_mode: 'HTML' }); 
 });
 
 // === КОЛЕСО ФОРТУНЫ ===
 bot.action('spin_wheel', (ctx) => { 
   const user = db.users[ctx.from.id]; 
   const now = Date.now(); 
-  if (now - user.last_spin_time < 24*60*60*1000) return ctx.answerCbQuery('Рано!'); 
+  if (now - user.last_spin_time < 24*60*60*1000) return ctx.answerCbQuery('Рано! Приходи завтра.'); 
   user.last_spin_time = now; 
   const rand = Math.random(); 
   let prize = ''; 
   if (rand < 0.25) { user.free_keys++; prize = '🔑 Ты выиграл 1 Ключ Маскарада!'; } 
-  else if (rand < 0.60) { user.aura_score += 5; prize = '✨ Твоя аура усилилась (+5 очков)!'; } 
-  else { user.aura_score += 2; prize = '🌙 Твоя аура немного усилилась (+2 очка)'; } 
-  updateAuraTitle(user); 
+  else if (rand < 0.60) { user.msg_count += 3; updateReputation(user); prize = '✨ Твоя репутация выросла!'; } 
+  else { user.msg_count += 1; updateReputation(user); prize = '🌙 Твоя репутация немного выросла'; } 
   scheduleSave(); 
   ctx.answerCbQuery(); 
   ctx.reply(
-    `🎡 <b>Колесо Фортуны!</b>\n\n${prize}\n🎭 Твой ранг: <b>${user.aura_title}</b> (${user.aura_score} очков)\n🔑 Ключей: ${user.free_keys}`, 
+    `🎡 <b>Колесо Фортуны!</b>\n\n${prize}\n🎭 Репутация: <b>${user.reputation_title}</b>\n🔑 Ключей: ${user.free_keys}`, 
     { parse_mode: 'HTML' }
   ); 
 });
 
-// === МАГАЗИН ===
+// === МАГАЗИН (ПОДРОБНОЕ ОПИСАНИЕ) ===
 bot.action('shop_reveal', (ctx) => { 
     ctx.answerCbQuery(); 
     ctx.reply(
-      `🔑 <b>1 Ключ Маскарада</b>\nОткроет личность одного автора.\n\n<b>149 ₽</b>`, 
+      `🔑 <b>Ключ Маскарада</b>\n\nЧто дает: Снимает маску с ОДНОГО тайного гостя. Ты увидишь его настоящее фото и узнаешь имя.\n\nСтоимость: <b>149 ₽</b>`, 
       { 
         parse_mode: 'HTML', 
         ...Markup.inlineKeyboard([
@@ -421,7 +387,7 @@ bot.action('shop_reveal', (ctx) => {
 bot.action('shop_vip', (ctx) => { 
     ctx.answerCbQuery(); 
     ctx.reply(
-      `💎 <b>VIP</b>\n5 ключей + значок.\n\n<b>399 ₽</b>`, 
+      `💎 <b>VIP Статус (1 месяц)</b>\n\nЧто дает:\n✅ 5 Ключей Маскарада сразу\n✅ Значок 💎 в профиле\n\nСтоимость: <b>399 ₽</b>`, 
       { 
         parse_mode: 'HTML', 
         ...Markup.inlineKeyboard([
@@ -435,7 +401,7 @@ bot.action('shop_vip', (ctx) => {
 bot.action('shop_premium', (ctx) => { 
     ctx.answerCbQuery(); 
     ctx.reply(
-      `👑 <b>PREMIUM</b>\nБезлимит ключей + ежедневные бонусы.\n\n<b>799 ₽</b>`, 
+      `👑 <b>PREMIUM Статус (1 месяц)</b>\n\nЧто дает:\n✅ Маски снимаются автоматически (без ключей)\n✅ 2 бесплатных Ключа каждый день от Фортуны\n✅ Значок 👑 в профиле\n\nСтоимость: <b>799 ₽</b>`, 
       { 
         parse_mode: 'HTML', 
         ...Markup.inlineKeyboard([
@@ -450,7 +416,7 @@ bot.action(/^buy_reveal_(.+)$/, async (ctx) => {
     const id = ctx.match[1]; 
     ctx.answerCbQuery(); 
     ctx.reply(
-      `🔑 Купить Ключ (149₽)`, 
+      `🔑 Купить Ключ Маскарада (149₽)`, 
       { 
         parse_mode: 'HTML', 
         ...Markup.inlineKeyboard([
@@ -479,7 +445,7 @@ bot.action('check_premium', async (ctx) => {
 bot.action('check_reveal_0', async (ctx) => { 
     await ctx.answerCbQuery('Проверка...'); 
     if (await checkYooMoneyPayment(`${ctx.from.id}_reveal_0`)) { 
-        const u=db.users[ctx.from.id]; u.free_keys++; scheduleSave(); ctx.reply('🔑 Ключ куплен! Используй его в сообщениях.', {parse_mode:'HTML'}); 
+        const u=db.users[ctx.from.id]; u.free_keys++; scheduleSave(); ctx.reply('🔑 Ключ куплен! Используй его под посланием.', {parse_mode:'HTML'}); 
     } else { ctx.reply('❌ Не найдено'); } 
 });
 
