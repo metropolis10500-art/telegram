@@ -43,7 +43,7 @@ setInterval(() => {
             delete db.messages[id]; deletedCount++; 
         } 
     });
-    if (deletedCount > 0) { console.log(`🧹 Удалено ${deletedCount} старых сообщений`); scheduleSave(); }
+    if (deletedCount > 0) { console.log(`Удалено ${deletedCount} старых сообщений`); scheduleSave(); }
 }, 3600000);
 
 // === ФУНКЦИИ БАЗЫ ===
@@ -54,7 +54,7 @@ function registerUser(tg_id, username, first_name) {
     }
 }
 
-function addMessage(target_id, text, sender_name, sender_photo, aura = "🌙 Нейтральная") { 
+function addMessage(target_id, text, sender_name, sender_photo, aura) { 
     const id = Date.now(); 
     db.messages[id] = { id, target_id, text, sender_name, sender_photo, aura, is_read: false, reveal_bought: false }; 
     scheduleSave(); 
@@ -66,14 +66,13 @@ function getUnreadMessages(target_id) {
 }
 
 function getMessageById(id) { return db.messages[id]; }
-
 function markAsRead(id) { const m = db.messages[id]; if (m) { m.is_read = true; scheduleSave(); } }
 
 // === УТИЛИТЫ ===
 function detectAura(text) { 
     const t = text.toLowerCase(); 
     if (t.match(/люблю|нрав|красив|горяч/)) return "🔥 Пылкая"; 
-    if (t.match(/ненави|дурак|туп/)) return "⚡️ Грозовая"; 
+    if (t.match(/ненави|дурак|туп/)) return "⚡ Грозовая"; 
     if (t.match(/скуч|грус/)) return "🌧 Туманная"; 
     return "🌙 Лунная"; 
 }
@@ -116,31 +115,29 @@ bot.start(async (ctx) => {
   const payload = ctx.startPayload;
 
   if (payload && payload.startsWith('w_')) {
-    // ВХОД ПО ССЫЛКЕ (Отправитель)
     const targetId = parseInt(payload.replace('w_', ''));
     const targetUser = db.users[targetId];
-    if (!targetUser) return ctx.reply('Этот пользователь еще не пользуется Шёпотом :(');
+    if (!targetUser) return ctx.reply('Этот пользователь еще не пользуется Шепотом :(');
     
     ctx.session = { targetId: targetId, sender_step: 'ask_name' };
     await ctx.reply(
       `🤫 <b>Ты хочешь отправить тайну для ${targetUser.first_name}</b>\n\n` +
-      `Правила Шёпота: мы просим тебя загрузить <b>своё реальное фото и имя</b>.\n` +
-      `Не переживай, получатель увидит их <b>ТОЛЬКО после оплаты</b>. А пока — ты в тени!\n\n` +
-      `👤 Напиши своё реальное имя:`,
+      `Правила Шепота: мы просим тебя загрузить <b>свое реальное фото и имя</b>.\n` +
+      `Не переживай, получатель увидит их <b>ТОЛЬКО после оплаты</b>. А пока - ты в тени!\n\n` +
+      `👤 Напиши свое реальное имя:`,
       { parse_mode: 'HTML', reply_markup: Markup.removeKeyboard() }
     );
   } else {
-    // ОБЫЧНЫЙ ВХОД (Получатель)
     ctx.session = {};
     const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
     const user = db.users[userId];
     const badge = user.is_premium ? '👑' : (user.is_vip ? '💎' : '');
     await ctx.reply(
-      `👋 <b>Добро пожаловать в Шёпот, ${badge} ${ctx.from.first_name}!</b>\n\n` +
+      `👋 <b>Добро пожаловать в Шепот, ${badge} ${ctx.from.first_name}!</b>\n\n` +
       `Это место, где тайны обретают лица.\n\n` +
       `📲 Скидывай свою ссылку в соцсети (Instagram, TikTok, VK).\n` +
       `🤫 Тебе будут писать анонимные послания.\n` +
-      `📸 Но есть подвох: чтобы узнать, <b>кто именно</b> тебе написал и увидеть его фото — придётся заплатить!\n\n` +
+      `📸 Но есть подвох: чтобы узнать, <b>кто именно</b> тебе написал и увидеть его фото - придется заплатить!\n\n` +
       `🔗 <b>Твоя ссылка:</b>\n<code>${link}</code>`,
       { parse_mode: 'HTML', ...getMainMenu() }
     );
@@ -166,17 +163,17 @@ bot.hears('💰 Магазин', (ctx) => {
     `💰 <b>Магазин</b>\n\nХочешь увидеть, кто скрывается за анонимом? Выбери тариф:`,
     { parse_mode: 'HTML', ...Markup.inlineKeyboard([
       [Markup.button.callback('📸 Открыть 1 фото и имя (149 ₽)', 'shop_reveal')],
-      [Markup.button.callback('💎 VIP — 5 открытий (399 ₽)', 'shop_vip')],
-      [Markup.button.callback('👑 PREMIUM — Безлимит (799 ₽)', 'shop_premium')]
+      [Markup.button.callback('💎 VIP - 5 открытий (399 ₽)', 'shop_vip')],
+      [Markup.button.callback('👑 PREMIUM - Безлимит (799 ₽)', 'shop_premium')]
     ])}
   );
 });
 
 bot.hears('❓ Помощь', (ctx) => {
   ctx.reply(
-    `<b>❓ Как работает Шёпот?</b>\n\n` +
+    `<b>❓ Как работает Шепот?</b>\n\n` +
     `1. Скопируй ссылку и кидай её куда угодно (Instagram, TikTok).\n` +
-    `2. Люди переходят, пишут тебе послания и <b>загружают своё реальное фото</b>.\n` +
+    `2. Люди переходят, пишут тебе послания и <b>загружают свое реальное фото</b>.\n` +
     `3. Ты читаешь текст бесплатно.\n` +
     `4. Хочешь увидеть лицо автора? Покупай открытие в Магазине! 📸`,
     { parse_mode: 'HTML' }
@@ -191,7 +188,8 @@ bot.on('photo', async (ctx) => {
   ctx.session.sender_photo = photoId;
   ctx.session.sender_step = 'ask_message';
 
-  await ctx.reply('✅ Фото получено!\n\n✍️ А теперь напиши своё анонимное послание (текст):`);
+  // ИСПРАВЛЕНО: Убраны проблемные эмодзи
+  await ctx.reply('✅ Фото получено!\n\n📝 А теперь напиши свое анонимное послание (текст):');
 });
 
 // --- ОБРАБОТКА ТЕКСТА ---
@@ -224,7 +222,7 @@ bot.on('text', async (ctx) => {
   if (ctx.session.sender_step === 'ask_name') {
     ctx.session.sender_name = text;
     ctx.session.sender_step = 'ask_photo';
-    return ctx.reply('📸 Отлично! Теперь отправь <b>своё реальное фото</b> (как картинку). Не бойся, оно зашифровано!', { parse_mode: 'HTML' });
+    return ctx.reply('📸 Отлично! Теперь отправь <b>свое реальное фото</b> (как картинку). Не бойся, оно зашифровано!', { parse_mode: 'HTML' });
   }
 
   // Шаг 3 для отправителя: Текст сообщения
@@ -236,7 +234,7 @@ bot.on('text', async (ctx) => {
     const msgId = addMessage(targetId, text, ctx.session.sender_name, ctx.session.sender_photo, aura);
     ctx.session = {};
 
-    await ctx.reply('✅ Послание доставлено! Твоё лицо в безопасности 🤫', getMainMenu());
+    await ctx.reply('✅ Послание доставлено! Твое лицо в безопасности 🤫', getMainMenu());
     try {
       await bot.telegram.sendMessage(targetId, '🤫 <b>Тебе пришло новое анонимное послание!</b>', {
         parse_mode: 'HTML',
@@ -458,6 +456,6 @@ bot.action('admin_clear_msgs', (ctx) => {
 });
 
 // === ЗАПУСК ===
-bot.launch().then(() => console.log('🤖 Бот "Шёпот" (NGL + Фото) запущен!')).catch(err => console.error(err));
+bot.launch().then(() => console.log('🤖 Бот Шепот (NGL + Фото) запущен!')).catch(err => console.error(err));
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
