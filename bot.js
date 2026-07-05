@@ -66,9 +66,9 @@ function getMainMenu() {
 
 // === ПЛАТЕЖНАЯ СИСТЕМА ЮMONEY ===
 
-// 1. Генерация ссылки (ИСПОЛЬЗУЕМ SMALL !!!)
 function generatePaymentLink(amount, label) {
-  return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=small&targets=WhisperBot&paymentType=AC&amount=${amount}&label=${label}`;
+  // Убрали targets, поменяли amount на sum для 100% совместимости с формой small
+  return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=small&paymentType=AC&sum=${amount}&label=${label}`;
 }
 
 // 2. Проверка оплаты через API (То же самое, что делает библиотека на Python)
