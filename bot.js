@@ -2,17 +2,19 @@ const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 
 // === НАСТРОЙКИ ===
-const BOT_TOKEN = '8878972156:AAHIvVDWZvZxGDYE0CqUeOdHTGXoTKOYiSI'; // ОБЯЗАТЕЛЬНО ЗАМЕНИ!
+const BOT_TOKEN = '8878972156:AAHIvVDWZvZxGDYE0CqUeOdHTGXoTKOYiSI';
+const YOOMONEY_WALLET = '4100118935779591';
+const YOOMONEY_API_TOKEN = '5133D1719448E2A5E1083A0FC605E369944CBB992B1D4490F13E2D4636C03191'; // Тот самый код из Шага 1
 const DB_FILE = './database.json';
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// === ХРАНИЛИЩЕ СОСТОЯНИЙ (Для работы меню и отправки без багов) ===
+// === ХРАНИЛИЩЕ СОСТОЯНИЙ ===
 const userState = {}; 
 
 // === БАЗА ДАННЫХ (JSON) ===
 if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, messages: [] }));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, messages: [], payments: [] }));
 }
 
 function loadDB() {
@@ -81,8 +83,7 @@ bot.start(async (ctx) => {
     userState[userId] = { targetId: targetId };
     
     await ctx.reply(
-      `🤫 <b>Напиши анонимное сообщение для ${targetUser.first_name}</b>\n\n` +
-      `Твое имя останется в строжайшем секрете!\n\n✍️ Пиши текст ниже:`,
+      `🤫 <b>Напиши анонимное сообщение для ${targetUser.first_name}</b>\n\nТвое имя останется в секрете!\n\n✍️ Пиши текст ниже:`,
       { parse_mode: 'HTML', reply_markup: Markup.removeKeyboard() }
     );
   } else {
@@ -90,24 +91,19 @@ bot.start(async (ctx) => {
     const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
     await ctx.reply(
       `👋 <b>Добро пожаловать в Шёпот!</b>\n\n` +
-      `🤫 100% анонимные сообщения\n` +
-      `🕵️‍♂️ Детективный режим (узнай отправителя за Звезды!)\n` +
-      `👑 VIP-статус для лучших сыщиков\n\n` +
-      `🔗 <b>Твоя личная ссылка:</b>\n<code>${link}</code>\n\n` +
-      `⚡️ <i>Скопируй её и закинь в Bio или Stories!</i>`,
+      `🤫 Анонимные сообщения\n🕵️‍♂️ Узнай отправителя!\n👑 VIP-статус\n\n` +
+      `🔗 <b>Твоя ссылка:</b>\n<code>${link}</code>`,
       { parse_mode: 'HTML', ...getMainMenu() }
     );
   }
 });
 
-// ==========================================================
-// --- КНОПКИ МЕНЮ (ОБЯЗАТЕЛЬНО ДО bot.on('text')) !!! ---
-// ==========================================================
+// === КНОПКИ МЕНЮ ===
 
 bot.hears('🔗 Моя ссылка', (ctx) => {
   delete userState[ctx.from.id]; 
   const link = `https://t.me/${ctx.botInfo.username}?start=w_${ctx.from.id}`;
-  ctx.reply(`🔗 <b>Твоя ссылка:</b>\n\n<code>${link}</code>\n\nПоделись ей!`, { parse_mode: 'HTML' });
+  ctx.reply(`🔗 <b>Твоя ссылка:</b>\n\n<code>${link}</code>`, { parse_mode: 'HTML' });
 });
 
 bot.hears('📨 Мои сообщения', (ctx) => {
@@ -121,12 +117,15 @@ bot.hears('📨 Мои сообщения', (ctx) => {
 
 bot.hears('💎 VIP Статус', (ctx) => {
   delete userState[ctx.from.id]; 
+  const label = `${ctx.from.id}_vip`;
+  const link = generatePaymentLink(299.00, label);
   ctx.reply(
-    `👑 <b>VIP Статус</b>\n\nХочешь всегда знать, кто тебе пишет?\n\n✅ Бесплатное разоблачение\n✅ Значок VIP\n\nСтоимость: <b>299 Stars ⭐️</b> в месяц`,
+    `👑 <b>VIP Статус</b>\n\n✅ Бесплатное разоблачение навсегда\n\nСтоимость: <b>299 ₽</b>`,
     {
       parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
-        [Markup.button.callback('💳 Купить VIP (⭐️299)', 'buy_vip')]
+        [Markup.button.url('💳 Перейти к оплате (299 ₽)', link)],
+        [Markup.button.callback('✅ Я оплатил', `check_vip`)]
       ])
     }
   );
@@ -139,12 +138,12 @@ bot.hears('❓ Помощь', (ctx) => {
     `1. Нажми «🔗 Моя ссылка» и скопируй.\n` +
     `2. Опубликуй у себя в профиле/Stories.\n` +
     `3. Люди будут писать тебе анонимно.\n` +
-    `4. Хочешь узнать автора? Используй Звезды Telegram ⭐️!`,
+    `4. Узнай автора за рубли! 🕵️‍♂️`,
     { parse_mode: 'HTML' }
   );
 });
 
-// --- ОБРАБОТКА ТЕКСТА (Отправка анонимного сообщения) ---
+// --- ОБРАБОТКА ТЕКСТА ---
 
 bot.on('text', async (ctx) => {
   const userId = ctx.from.id;
@@ -175,7 +174,7 @@ bot.on('text', async (ctx) => {
   } catch (e) {}
 });
 
-// === ИНЛАЙН КНОПКИ (Чтение и Покупки) ===
+// === ИНЛАЙН КНОПКИ ===
 
 bot.action('read_messages', (ctx) => {
   const msgs = getUnreadMessages(ctx.from.id);
@@ -211,11 +210,16 @@ function showNextMessage(ctx) {
     );
     return showNextMessage(ctx);
   } else {
+    const hintLabel = `${userId}_hint_${msg.id}`;
+    const revealLabel = `${userId}_reveal_${msg.id}`;
+    
     ctx.reply(
       `🤫 <b>Анонимное сообщение:</b>\n\n"${msg.text}"\n\nХочешь узнать, кто это?`,
       { parse_mode: 'HTML', ...Markup.inlineKeyboard([
-        [Markup.button.callback('🔍 Подсказка (⭐️50)', `buy_hint_${msg.id}`)],
-        [Markup.button.callback('🕵️ Кто это? (⭐️150)', `buy_reveal_${msg.id}`)],
+        [Markup.button.url('🔍 Подсказка (50 ₽)', generatePaymentLink(50.00, hintLabel))],
+        [Markup.button.callback('✅ Оплатил подсказку', `check_hint_${msg.id}`)],
+        [Markup.button.url('🕵️ Кто это? (150 ₽)', generatePaymentLink(150.00, revealLabel))],
+        [Markup.button.callback('✅ Оплатил разоблачение', `check_reveal_${msg.id}`)],
         [Markup.button.callback('➡️ Следующее', 'skip_msg')]
       ])}
     );
@@ -227,93 +231,102 @@ bot.action('skip_msg', (ctx) => {
   showNextMessage(ctx);
 });
 
-// === ПЛАТЕЖНАЯ СИСТЕМА TELEGRAM STARS ===
+// === ПЛАТЕЖНАЯ СИСТЕМА ЮMONEY API ===
 
-// Обработчик покупки VIP
-bot.action('buy_vip', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.replyWithInvoice({
-        title: '👑 VIP Статус (1 месяц)',
-        description: 'Бесплатное разоблачение всех анонимов на 30 дней!',
-        payload: 'vip_purchase',
-        currency: 'XTR',
-        prices: [{ label: 'VIP', amount: 299 }]
-        // provider_token УДАЛЕН! Это обязательно для Stars.
+function generatePaymentLink(amount, label) {
+  return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=shop&targets=WhisperBot&paymentType=AC&amount=${amount}&label=${label}`;
+}
+
+// Функция проверки оплаты через API
+async function checkYooMoneyPayment(label) {
+  try {
+    const params = new URLSearchParams();
+    params.append('label', label);
+    params.append('type', 'in'); // Только входящие
+
+    const response = await fetch('https://yoomoney.ru/api/operation-history', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${YOOMONEY_API_TOKEN}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString()
     });
-});
 
-// Обработчик покупки Подсказки
-bot.action(/^buy_hint_(.+)$/, async (ctx) => {
-    const msgId = ctx.match[1];
-    await ctx.answerCbQuery();
-    await ctx.replyWithInvoice({
-        title: '🔍 Подсказка отправителя',
-        description: 'Узнать первую букву имени анонима',
-        payload: `hint_${msgId}`,
-        currency: 'XTR',
-        prices: [{ label: 'Подсказка', amount: 50 }]
-        // provider_token УДАЛЕН!
-    });
-});
-
-// Обработчик покупки Разоблачения
-bot.action(/^buy_reveal_(.+)$/, async (ctx) => {
-    const msgId = ctx.match[1];
-    await ctx.answerCbQuery();
-    await ctx.replyWithInvoice({
-        title: '🕵️ Полное разоблачение',
-        description: 'Узнать, кто отправил это сообщение',
-        payload: `reveal_${msgId}`,
-        currency: 'XTR',
-        prices: [{ label: 'Разоблачение', amount: 150 }]
-        // provider_token УДАЛЕН!
-    });
-});
-
-// Подтверждение предзаказа (Telegram ждет этого от бота перед оплатой)
-bot.on('pre_checkout_query', (ctx) => {
-    ctx.answerPreCheckoutQuery(true); 
-});
-
-// Успешная оплата
-bot.on('successful_payment', async (ctx) => {
-    const payload = ctx.message.successful_payment.invoice_payload;
-    const userId = ctx.from.id;
+    const data = await response.json();
     
-    const db = loadDB();
-
-    if (payload === 'vip_purchase') {
-        const expiry = Date.now() + 30 * 24 * 60 * 60 * 1000;
-        if (!db.users[userId]) registerUser(userId, 'user', 'User');
-        db.users[userId].is_vip = true;
-        db.users[userId].vip_expiry = expiry;
-        saveDB(db);
-        ctx.reply('👑 <b>VIP Статус активирован на 30 дней!</b>\nТеперь ты видишь всех отправителей бесплатно!', { parse_mode: 'HTML' });
-    } else {
-        const parts = payload.split('_');
-        const type = parts[0];
-        const msgId = parseInt(parts[1]);
-        const msg = db.messages.find(m => m.id === msgId);
-
-        if (msg) {
-            if (type === 'hint') {
-                msg.hint_bought = true;
-                saveDB(db);
-                ctx.reply(`🔍 <b>Подсказка:</b>\n${msg.sender_hint}`, { parse_mode: 'HTML' });
-            } else if (type === 'reveal') {
-                msg.reveal_bought = true;
-                saveDB(db);
-                ctx.reply(`🕵️ <b>Разоблачение!</b>\nОтправитель начинается на букву, указанную в подсказке!`, { parse_mode: 'HTML' });
-            }
-        } else {
-            ctx.reply('Ошибка: сообщение не найдено.');
-        }
+    // Если есть операции и хотя бы одна успешна
+    if (data.operations && data.operations.length > 0) {
+      const successfulOp = data.operations.find(op => op.status === 'success');
+      if (successfulOp) return true;
     }
+    return false;
+  } catch (error) {
+    console.error('Ошибка проверки API ЮMoney:', error);
+    return false;
+  }
+}
+
+// Обработчики кнопок "Я оплатил"
+bot.action('check_vip', async (ctx) => {
+  await ctx.answerCbQuery('Проверяю оплату... ⏳');
+  const label = `${ctx.from.id}_vip`;
+  const isPaid = await checkYooMoneyPayment(label);
+
+  if (isPaid) {
+    const db = loadDB();
+    const userId = ctx.from.id;
+    if (!db.users[userId]) registerUser(userId, 'user', 'User');
+    db.users[userId].is_vip = true;
+    db.users[userId].vip_expiry = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    saveDB(db);
+    ctx.reply('👑 <b>VIP Статус активирован!</b>\nТеперь ты видишь всех отправителей!', { parse_mode: 'HTML' });
+  } else {
+    ctx.reply('❌ Оплата не найдена. Убедитесь, что вы перевели деньги, и попробуйте снова через минуту.');
+  }
+});
+
+bot.action(/^check_hint_(.+)$/, async (ctx) => {
+  const msgId = ctx.match[1];
+  await ctx.answerCbQuery('Проверяю оплату... ⏳');
+  const label = `${ctx.from.id}_hint_${msgId}`;
+  const isPaid = await checkYooMoneyPayment(label);
+
+  if (isPaid) {
+    const db = loadDB();
+    const msg = db.messages.find(m => m.id === parseInt(msgId));
+    if (msg) {
+      msg.hint_bought = true;
+      saveDB(db);
+      ctx.reply(`🔍 <b>Подсказка:</b>\n${msg.sender_hint}`, { parse_mode: 'HTML' });
+    }
+  } else {
+    ctx.reply('❌ Оплата не найдена.');
+  }
+});
+
+bot.action(/^check_reveal_(.+)$/, async (ctx) => {
+  const msgId = ctx.match[1];
+  await ctx.answerCbQuery('Проверяю оплату... ⏳');
+  const label = `${ctx.from.id}_reveal_${msgId}`;
+  const isPaid = await checkYooMoneyPayment(label);
+
+  if (isPaid) {
+    const db = loadDB();
+    const msg = db.messages.find(m => m.id === parseInt(msgId));
+    if (msg) {
+      msg.reveal_bought = true;
+      saveDB(db);
+      ctx.reply(`🕵️ <b>Разоблачение!</b>\nОтправитель начинается на букву из подсказки!`, { parse_mode: 'HTML' });
+    }
+  } else {
+    ctx.reply('❌ Оплата не найдена.');
+  }
 });
 
 // === ЗАПУСК ===
 bot.launch().then(() => {
-    console.log('🤖 Бот "Шёпот" со Stars запущен!');
+    console.log('🤖 Бот "Шёпот" с YooMoney API запущен!');
 }).catch((err) => console.error('Ошибка бота:', err));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
