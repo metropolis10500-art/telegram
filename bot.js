@@ -28,7 +28,6 @@ function scheduleSave() {
     }
 }
 
-// Очистка старых сообщений
 setInterval(() => {
     const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
@@ -44,9 +43,10 @@ function registerUser(tg_id, username, first_name) {
     }
 }
 
-function addMessage(target_id, text, sender_name, sender_photo) { 
+// Добавлен флаг is_open (открытое послание)
+function addMessage(target_id, text, sender_name, sender_photo, is_open) { 
     const id = Date.now(); 
-    db.messages[id] = { id, target_id, text, sender_name, sender_photo, is_read: false, is_revealed: false }; 
+    db.messages[id] = { id, target_id, text, sender_name, sender_photo, is_read: false, is_revealed: false, is_open: is_open }; 
     scheduleSave(); 
     return id; 
 }
@@ -105,10 +105,10 @@ bot.start(async (ctx) => {
             db.users[userId].invited_by = refId;
             db.users[refId].ref_count++;
             scheduleSave();
-            bot.telegram.sendMessage(refId, '👥 По твоей ссылке перешел друг! Чем больше переходов, тем круче твой профиль.').catch(()=>{});
+            bot.telegram.sendMessage(refId, '👥 По твоей ссылке перешел друг!').catch(()=>{});
         }
     }
-    return ctx.reply('👋 Добро пожаловать! Тебя пригласили в Шёпот. Кидай свою ссылку и жди анонимок!', { parse_mode: 'HTML', ...getMainMenu() });
+    return ctx.reply('👋 Добро пожаловать! Тебя пригласили в Шёпот.', { parse_mode: 'HTML', ...getMainMenu() });
   }
 
   // Вход для отправки сообщения
@@ -119,8 +119,8 @@ bot.start(async (ctx) => {
     
     ctx.session = { targetId: targetId, sender_step: 'ask_name' };
     return ctx.reply(
-      `🤫 <b>Напиши анонимное сообщение для ${targetUser.first_name}</b>\n\n` +
-      `Правило Шёпота: укажи свое имя и фото. Получатель прочтет текст бесплатно, но твое лицо будет скрыто, пока он не оплатит его раскрытие!\n\n` +
+      `🤫 <b>Напиши сообщение или вопрос для ${targetUser.first_name}</b>\n\n` +
+      `Укажи свое имя и фото. Потом ты сможешь выбрать: отправить анонимно (твой портрет скрыт) или открыто (твое имя и фото видны сразу).\n\n` +
       `👤 Напиши свое имя:`,
       { parse_mode: 'HTML', reply_markup: Markup.removeKeyboard() }
     );
@@ -133,11 +133,11 @@ bot.start(async (ctx) => {
   const badge = user.is_premium ? '👑' : '';
   
   await ctx.reply(
-    `👋 <b>Добро пожаловать в Шёпот, ${badge} ${ctx.from.first_name}!</b> 🤫\n\n` +
-    `Это место, где ты получаешь анонимные сообщения и вопросы.\n\n` +
+    `👋 <b>Добро пожаловать в Шёпот — 🤫 Анонимные сообщения и вопросы!</b>\n\n` +
+    `Узнай, что скрывают твои друзья. Спрашивай и отвечай на вопросы. Они могут быть открытыми или анонимными ;)\n\n` +
     `📱 Кидай ссылку в Instagram, TikTok или VK. Друзья напишут то, что никогда не сказали бы в лицо!\n\n` +
     `📩 Тексты ты читаешь <b>бесплатно</b>.\n` +
-    `🎭 Но авторы скрыты. Хочешь узнать, кто это и увидеть фото? Это доступно в Премиум!\n\n` +
+    `🎭 Но анонимные авторы скрыты. Хочешь узнать, кто это и увидеть фото? Это доступно в Премиум!\n\n` +
     `🔗 <b>Твоя ссылка:</b>\n<code>${link}</code>`,
     { parse_mode: 'HTML', ...getMainMenu() }
   );
@@ -150,14 +150,14 @@ bot.hears('🔗 Моя ссылка', (ctx) => {
   const refLink = `https://t.me/${ctx.botInfo.username}?start=r_${userId}`;
   ctx.reply(
     `🔗 <b>Ссылка для соцсетей:</b>\n<code>${link}</code>\n\n` +
-    `👥 <b>Реферальная ссылка:</b>\n<code>${refLink}</code>\n\nКидай первую ссылку в Stories!`,
+    `👥 <b>Реферальная ссылка:</b>\n<code>${refLink}</code>`,
     { parse_mode: 'HTML' }
   );
 });
 
 bot.hears('📬 Сообщения', (ctx) => {
   const msgs = getUnreadMessages(ctx.from.id);
-  if (msgs.length === 0) return ctx.reply('📭 Пока пусто... Поделись ссылкой, чтобы получать анонимки!');
+  if (msgs.length === 0) return ctx.reply('📭 Пока пусто... Поделись ссылкой!');
   ctx.session = ctx.session || {};
   ctx.session.msgQueue = msgs.map(m => m.id);
   showNextMessage(ctx);
@@ -165,7 +165,7 @@ bot.hears('📬 Сообщения', (ctx) => {
 
 bot.hears('💎 Премиум', (ctx) => {
   ctx.reply(
-    `🎭 <b>Хочешь знать, кто тебе пишет?</b>\n\nВсе авторы скрыты. Выбери, как их раскрыть:`,
+    `🎭 <b>Хочешь знать, кто тебе пишет?</b>\n\nВсе анонимные авторы скрыты. Выбери, как их раскрыть:`,
     { 
       parse_mode: 'HTML', 
       ...Markup.inlineKeyboard([
@@ -191,7 +191,7 @@ bot.on('photo', async (ctx) => {
   const photoId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
   ctx.session.sender_photo = photoId;
   ctx.session.sender_step = 'ask_message';
-  await ctx.reply('✅ Фото получено! Теперь напиши послание (текст):');
+  await ctx.reply('✅ Фото получено! Теперь напиши послание или вопрос:');
 });
 
 bot.on('text', async (ctx) => {
@@ -215,33 +215,65 @@ bot.on('text', async (ctx) => {
     }
   }
 
-  // Шаг 1: Имя отправителя
+  // Шаг 1: Имя
   if (ctx.session.sender_step === 'ask_name') {
     ctx.session.sender_name = text;
     ctx.session.sender_step = 'ask_photo';
-    return ctx.reply('📸 Прикрепи свое фото (картинкой). Оно будет скрыто за маской!');
+    return ctx.reply('📸 Прикрепи свое фото (картинкой).');
   }
 
-  // Шаг 3: Текст послания
+  // Шаг 3: Текст послания и выбор типа отправки
   if (ctx.session.sender_step === 'ask_message') {
-    const targetId = ctx.session.targetId;
     if (text.length > 200) return ctx.reply('Максимум 200!');
-    const msgId = addMessage(targetId, text, ctx.session.sender_name, ctx.session.sender_photo);
-
-    ctx.session = {};
-    await ctx.reply('✅ Послание доставлено! Твое лицо в безопасности 🤫', getMainMenu());
-    try {
-      await bot.telegram.sendMessage(targetId, '🤫 <b>Тебе пришло новое анонимное послание!</b>', { 
-        parse_mode: 'HTML', 
+    ctx.session.sender_text = text;
+    ctx.session.sender_step = 'choose_mode';
+    
+    return ctx.reply(
+      `📝 Послание готово: "${text}"\n\nВыбери, как его отправить:`,
+      {
+        parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('📬 Прочитать', `read_${msgId}`)]
+          [Markup.button.callback('🤫 Анонимно (автор скрыт)', 'send_anon')],
+          [Markup.button.callback('👤 Открыто (имя и фото видны)', 'send_open')]
         ])
-      });
-    } catch (e) {}
+      }
+    );
   }
 });
 
-// === ЧТЕНИЕ СООБЩЕНИЙ (Текст БЕСПЛАТНО, Автор ПЛАТНО) ===
+// Обработка выбора типа отправки
+bot.action('send_anon', (ctx) => { sendMessage(ctx, false); });
+bot.action('send_open', (ctx) => { sendMessage(ctx, true); });
+
+async function sendMessage(ctx, is_open) {
+  if (!ctx.session || !ctx.session.targetId) return ctx.answerCbQuery('Ошибка сессии');
+  
+  const targetId = ctx.session.targetId;
+  const text = ctx.session.sender_text;
+  const sender_name = ctx.session.sender_name;
+  const sender_photo = ctx.session.sender_photo;
+
+  const msgId = addMessage(targetId, text, sender_name, sender_photo, is_open);
+
+  const typeText = is_open ? '👤 Открыто' : '🤫 Анонимно';
+  ctx.session = {};
+  await ctx.reply(`✅ Послание доставлено ${typeText}!`, getMainMenu());
+  
+  const notifyText = is_open 
+    ? '📨 <b>Тебе пришло открытое послание!</b>' 
+    : '🤫 <b>Тебе пришло анонимное послание!</b>';
+    
+  try {
+    await bot.telegram.sendMessage(targetId, notifyText, { 
+      parse_mode: 'HTML', 
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('📬 Прочитать', `read_${msgId}`)]
+      ])
+    });
+  } catch (e) {}
+}
+
+// === ЧТЕНИЕ СООБЩЕНИЙ ===
 bot.action('read_messages', (ctx) => { 
   const msgs = getUnreadMessages(ctx.from.id); 
   if (msgs.length === 0) return ctx.answerCbQuery('Пусто!'); 
@@ -270,13 +302,14 @@ function showNextMessage(ctx) {
 function showSingleMessage(ctx, msg) {
   const user = db.users[ctx.from.id]; 
   const isPremium = user.is_premium && user.premium_expiry > Date.now(); 
-  const hasAccess = isPremium || msg.is_revealed;
+  // Если сообщение открытое ИЛИ премиум ИЛИ раскрыто — показываем автора
+  const hasAccess = msg.is_open || isPremium || msg.is_revealed;
 
   if (hasAccess) { 
-    if (!msg.is_revealed) { revealMessage(msg.id); }
+    if (!msg.is_revealed && !msg.is_open) { revealMessage(msg.id); }
     ctx.answerCbQuery(); 
     ctx.replyWithPhoto(msg.sender_photo, { 
-      caption: `📩 <b>Послание:</b>\n"${msg.text}"\n\n🎭 <b>Автор раскрыт:</b> ${msg.sender_name}`, 
+      caption: `📩 <b>Послание:</b>\n"${msg.text}"\n\n👤 <b>Автор:</b> ${msg.sender_name}`, 
       parse_mode: 'HTML' 
     }); 
   } else { 
@@ -296,7 +329,7 @@ function showSingleMessage(ctx, msg) {
 
 bot.action('skip_msg', (ctx) => { ctx.answerCbQuery(); showNextMessage(ctx); });
 
-// === МАГАЗИН (ПОДРОБНОЕ ОПИСАНИЕ) ===
+// === МАГАЗИН ===
 bot.action('shop_reveal', (ctx) => { 
     ctx.answerCbQuery(); 
     ctx.reply(
@@ -314,7 +347,7 @@ bot.action('shop_reveal', (ctx) => {
 bot.action('shop_premium', (ctx) => { 
     ctx.answerCbQuery(); 
     ctx.reply(
-      `👑 <b>Премиум навсегда</b>\n\nЧто дает:\n✅ Все авторы раскрываются автоматически (без доплат)\n✅ Значок 👑 в профиле\n\nСтоимость: <b>799 ₽</b>`, 
+      `👑 <b>Премиум навсегда</b>\n\nЧто дает:\n✅ Все анонимные авторы раскрываются автоматически (без доплат)\n✅ Значок 👑 в профиле\n\nСтоимость: <b>799 ₽</b>`, 
       { 
         parse_mode: 'HTML', 
         ...Markup.inlineKeyboard([
@@ -345,14 +378,14 @@ bot.action('check_premium', async (ctx) => {
     await ctx.answerCbQuery('Проверяю...'); 
     if (await checkYooMoneyPayment(`${ctx.from.id}_premium`)) { 
         const u=db.users[ctx.from.id]; u.is_premium=true; u.premium_expiry=Date.now()+100*365*24*60*60*1000; scheduleSave(); ctx.reply('👑 Премиум активирован навсегда! Все маски сняты.', {parse_mode:'HTML'}); 
-    } else { ctx.reply('❌ Оплата не найдена. Попробуй позже.'); } 
+    } else { ctx.reply('❌ Оплата не найдена.'); } 
 });
 
 bot.action('check_reveal_0', async (ctx) => { 
     await ctx.answerCbQuery('Проверяю...'); 
     if (await checkYooMoneyPayment(`${ctx.from.id}_reveal_0`)) { 
-        const m = Object.values(db.messages).find(m => m.target_id === ctx.from.id && !m.is_revealed);
-        if(m) { revealMessage(m.id); ctx.replyWithPhoto(m.sender_photo, { caption: `🎭 Автор раскрыт: ${m.sender_name}\n\n"${m.text}"`, parse_mode:'HTML'}); }
+        const m = Object.values(db.messages).find(m => m.target_id === ctx.from.id && !m.is_revealed && !m.is_open);
+        if(m) { revealMessage(m.id); ctx.replyWithPhoto(m.sender_photo, { caption: `👤 Автор раскрыт: ${m.sender_name}\n\n"${m.text}"`, parse_mode:'HTML'}); }
         else { ctx.reply('🔑 Оплата прошла, но неоплаченных посланий нет!'); }
     } else { ctx.reply('❌ Оплата не найдена.'); } 
 });
@@ -362,7 +395,7 @@ bot.action(/^check_reveal_specific_(.+)$/, async (ctx) => {
     await ctx.answerCbQuery('Проверяю...'); 
     if(await checkYooMoneyPayment(`${ctx.from.id}_reveal_${id}`)){ 
         const m = getMessageById(parseInt(id)); 
-        if(m) { revealMessage(m.id); ctx.replyWithPhoto(m.sender_photo, { caption: `🎭 Автор раскрыт: ${m.sender_name}\n\n"${m.text}"`, parse_mode:'HTML'}); }
+        if(m) { revealMessage(m.id); ctx.replyWithPhoto(m.sender_photo, { caption: `👤 Автор раскрыт: ${m.sender_name}\n\n"${m.text}"`, parse_mode:'HTML'}); }
     } else { ctx.reply('❌ Оплата не найдена.'); } 
 });
 
