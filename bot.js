@@ -4,17 +4,15 @@ const fs = require('fs');
 // === НАСТРОЙКИ ===
 const BOT_TOKEN = '8878972156:AAHIvVDWZvZxGDYE0CqUeOdHTGXoTKOYiSI';
 const YOOMONEY_WALLET = '4100118935779591';
-const YOOMONEY_API_TOKEN = '917F970244FF30372C8C5D9612113ADEA0868753DEE329090019D62876829FAB'; // Тот самый код из Шага 1
+const YOOMONEY_API_TOKEN = '5133D1719448E2A5E1083A0FC605E369944CBB992B1D4490F13E2D4636C03191'; // Тот же токен, что и для Python
 const DB_FILE = './database.json';
 
 const bot = new Telegraf(BOT_TOKEN);
-
-// === ХРАНИЛИЩЕ СОСТОЯНИЙ ===
 const userState = {}; 
 
 // === БАЗА ДАННЫХ (JSON) ===
 if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, messages: [], payments: [] }));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, messages: [] }));
 }
 
 function loadDB() {
@@ -58,12 +56,48 @@ function markAsRead(id) {
     if (msg) { msg.is_read = true; saveDB(db); }
 }
 
-// === КРАСИВЫЙ ДИЗАЙН (UI) ===
+// === КЛАВИАТУРЫ ===
 function getMainMenu() {
   return Markup.keyboard([
     ['📨 Мои сообщения', '🔗 Моя ссылка'],
     ['💎 VIP Статус', '❓ Помощь']
   ]).resize();
+}
+
+// === ПЛАТЕЖНАЯ СИСТЕМА ЮMONEY ===
+
+// 1. Генерация ссылки (ИСПОЛЬЗУЕМ SMALL !!!)
+function generatePaymentLink(amount, label) {
+  return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=small&targets=WhisperBot&paymentType=AC&amount=${amount}&label=${label}`;
+}
+
+// 2. Проверка оплаты через API (То же самое, что делает библиотека на Python)
+async function checkYooMoneyPayment(label) {
+  try {
+    const params = new URLSearchParams();
+    params.append('label', label);
+    params.append('type', 'in');
+
+    const response = await fetch('https://yoomoney.ru/api/operation-history', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${YOOMONEY_API_TOKEN}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString()
+    });
+
+    const data = await response.json();
+    
+    if (data.operations && data.operations.length > 0) {
+      const successfulOp = data.operations.find(op => op.status === 'success');
+      if (successfulOp) return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Ошибка проверки API ЮMoney:', error);
+    return false;
+  }
 }
 
 // === ЛОГИКА БОТА ===
@@ -90,9 +124,7 @@ bot.start(async (ctx) => {
     delete userState[userId];
     const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
     await ctx.reply(
-      `👋 <b>Добро пожаловать в Шёпот!</b>\n\n` +
-      `🤫 Анонимные сообщения\n🕵️‍♂️ Узнай отправителя!\n👑 VIP-статус\n\n` +
-      `🔗 <b>Твоя ссылка:</b>\n<code>${link}</code>`,
+      `👋 <b>Добро пожаловать в Шёпот!</b>\n\n🤫 Анонимные сообщения\n🕵️‍♂️ Узнай отправителя!\n👑 VIP-статус\n\n🔗 <b>Твоя ссылка:</b>\n<code>${link}</code>`,
       { parse_mode: 'HTML', ...getMainMenu() }
     );
   }
@@ -134,11 +166,7 @@ bot.hears('💎 VIP Статус', (ctx) => {
 bot.hears('❓ Помощь', (ctx) => {
   delete userState[ctx.from.id]; 
   ctx.reply(
-    `<b>Как пользоваться:</b>\n\n` +
-    `1. Нажми «🔗 Моя ссылка» и скопируй.\n` +
-    `2. Опубликуй у себя в профиле/Stories.\n` +
-    `3. Люди будут писать тебе анонимно.\n` +
-    `4. Узнай автора за рубли! 🕵️‍♂️`,
+    `<b>Как пользоваться:</b>\n\n1. Нажми «🔗 Моя ссылка» и скопируй.\n2. Опубликуй у себя в профиле/Stories.\n3. Люди будут писать тебе анонимно.\n4. Узнай автора за рубли! 🕵️‍♂️`,
     { parse_mode: 'HTML' }
   );
 });
@@ -231,44 +259,8 @@ bot.action('skip_msg', (ctx) => {
   showNextMessage(ctx);
 });
 
-// === ПЛАТЕЖНАЯ СИСТЕМА ЮMONEY API ===
+// === ОБРАБОТКА ОПЛАТЫ ===
 
-function generatePaymentLink(amount, label) {
-  // Поменяли shop на small!
-  return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=small&targets=WhisperBot&paymentType=AC&amount=${amount}&label=${label}`;
-}
-
-// Функция проверки оплаты через API
-async function checkYooMoneyPayment(label) {
-  try {
-    const params = new URLSearchParams();
-    params.append('label', label);
-    params.append('type', 'in'); // Только входящие
-
-    const response = await fetch('https://yoomoney.ru/api/operation-history', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${YOOMONEY_API_TOKEN}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: params.toString()
-    });
-
-    const data = await response.json();
-    
-    // Если есть операции и хотя бы одна успешна
-    if (data.operations && data.operations.length > 0) {
-      const successfulOp = data.operations.find(op => op.status === 'success');
-      if (successfulOp) return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Ошибка проверки API ЮMoney:', error);
-    return false;
-  }
-}
-
-// Обработчики кнопок "Я оплатил"
 bot.action('check_vip', async (ctx) => {
   await ctx.answerCbQuery('Проверяю оплату... ⏳');
   const label = `${ctx.from.id}_vip`;
