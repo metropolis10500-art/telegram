@@ -71,7 +71,8 @@ function revealMessage(id) { const m = getMessage(id); if(m) { m.is_revealed = t
 function addKeys(userId, amount) { const u = getUser(userId); if(u) { u.keys += amount; saveUser(u); } }
 function spendKeys(userId, amount) { const u = getUser(userId); if(u && u.keys >= amount) { u.keys -= amount; saveUser(u); return true; } return false; }
 
-function getMainMenu() { return Markup.keyboard([['🤫 Шёпоты', '🗓 Бонус'], ['🗝️ Ключи', '👤 Профиль']]).resize(); }
+// ГЛАВНОЕ МЕНЮ С КНОПКОЙ МАГАЗИНА
+function getMainMenu() { return Markup.keyboard([['🤫 Шёпоты', '🛒 Магазин'], ['🗓 Бонус', '🔗 Ссылка'], ['👤 Профиль']]).resize(); }
 function generatePaymentLink(amount, label) { return `https://yoomoney.ru/quickpay/confirm.xml?receiver=${YOOMONEY_WALLET}&quickpay-form=small&paymentType=AC&sum=${amount}&label=${label}`; }
 
 async function checkYooMoneyPayment(label) { 
@@ -133,7 +134,7 @@ bot.start(async (ctx) => {
     await ctx.reply(`🤫 <b>Добро пожаловать в Шёпот!</b>\n\n📩 Узнай, что скрывают друзья.\n🎭 Авторы скрыты... Но у тебя есть ключи!\n\n🔗 Твоя ссылка:\n<code>${link}</code>`, { parse_mode: 'HTML', ...getMainMenu() });
 });
 
-// --- ЕЖЕДНЕВНЫЙ БОНУС (СТРИК) ---
+// --- ЕЖЕДНЕВНЫЙ БОНУС ---
 bot.hears('🗓 Бонус', (ctx) => {
     const userId = ctx.from.id.toString();
     const user = getUser(userId);
@@ -159,20 +160,60 @@ bot.hears('🗓 Бонус', (ctx) => {
     ctx.reply(msg, { parse_mode: 'HTML' });
 });
 
-bot.hears('🗝️ Ключи', (ctx) => {
+// --- КНОПКА ССЫЛКИ ---
+bot.hears('🔗 Ссылка', (ctx) => {
     ctx.session = {};
-    const user = getUser(ctx.from.id.toString());
-    const link = `https://t.me/${ctx.botInfo.username}?start=w_${ctx.from.id}`;
-    const refLink = `https://t.me/${ctx.botInfo.username}?start=r_${ctx.from.id}`;
-    ctx.reply(`🗝️ У тебя: <b>${user.keys} Ключей</b>\n\n🔗 <b>Твоя ссылка для соцсетей:</b>\n<code>${link}</code>\n\n👥 <b>Реферальная (1 друг = 1 Ключ):</b>\n<code>${refLink}</code>`, { 
+    const userId = ctx.from.id.toString();
+    const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
+    const refLink = `https://t.me/${ctx.botInfo.username}?start=r_${userId}`;
+    ctx.reply(`🔗 <b>Твоя ссылка для соцсетей:</b>\n<code>${link}</code>\n\n👥 <b>Реферальная (1 друг = 1 Ключ):</b>\n<code>${refLink}</code>`, { 
         parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
             [Markup.button.callback('🤫 Послание', 'link_default'), Markup.button.callback('😈 Исповедь', 'link_confession')],
-            [Markup.button.callback('❤️ Симпатия', 'link_crush')],
-            [Markup.button.callback('🛒 Купить Ключи', 'shop_keys')]
+            [Markup.button.callback('❤️ Симпатия', 'link_crush')]
         ])
     });
 });
+
+// ======================================================
+// === 🛒 МАГАЗИН (ТАРИФЫ И ЦЕНЫ) ===
+// ======================================================
+bot.hears('🛒 Магазин', (ctx) => {
+    ctx.session = {};
+    const user = getUser(ctx.from.id.toString());
+    
+    ctx.reply(
+        `🛒 <b>Магазин Шёпота</b>\n\n` +
+        `Здесь ты можешь купить всё для раскрытия тайн!\n\n` +
+        `👑 <b>ПРЕМИУМ</b> (Все авторы раскрыты, Призрак, Безлимит чтения)\n` +
+        ` ├ 3 дня — <b>99 ₽</b>\n` +
+        ` ├ 1 месяц — <b>299 ₽</b>\n` +
+        ` └ Навсегда — <b>799 ₽</b>\n\n` +
+        `🗝 <b>КЛЮЧИ</b> (Для чтения и подсказок имени. У тебя: ${user.keys})\n` +
+        ` ├ 3 Ключа — <b>99 ₽</b>\n` +
+        ` └ 10 Ключей — <b>249 ₽</b> (Выгода!)\n\n` +
+        `👇 <b>Выбери тариф:</b>`, 
+        {
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([
+                // Премиум тарифы
+                [Markup.button.callback('👑 Премиум 3 дня (99₽)', 'shop_prem_3')],
+                [Markup.button.callback('👑 Премиум 1 месяц (299₽)', 'shop_prem_30')],
+                [Markup.button.callback('👑 Премиум НАВСЕГДА (799₽)', 'shop_prem_forever')],
+                // Ключи
+                [Markup.button.callback('🗝 3 Ключа (99₽)', 'shop_keys_3')],
+                [Markup.button.callback('🗝 10 Ключей (249₽)', 'shop_keys_10')]
+            ])
+        }
+    );
+});
+
+// Обработка выбора в магазине (Генерация ссылки оплаты)
+bot.action('shop_prem_3', (ctx) => { ctx.answerCbQuery(); ctx.reply(`👑 <b>Премиум 3 дня (99 ₽)</b>\n\nНажми "Оплатить", затем после успешной оплаты нажми "Я оплатил":`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(99, `${ctx.from.id}_prem_3`))], [Markup.button.callback('✅ Я оплатил', 'check_prem_3')]]) }); });
+bot.action('shop_prem_30', (ctx) => { ctx.answerCbQuery(); ctx.reply(`👑 <b>Премиум 1 месяц (299 ₽)</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(299, `${ctx.from.id}_prem_30`))], [Markup.button.callback('✅ Я оплатил', 'check_prem_30')]]) }); });
+bot.action('shop_prem_forever', (ctx) => { ctx.answerCbQuery(); ctx.reply(`👑 <b>Премиум Навсегда (799 ₽)</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(799, `${ctx.from.id}_prem_forever`))], [Markup.button.callback('✅ Я оплатил', 'check_prem_forever')]]) }); });
+bot.action('shop_keys_3', (ctx) => { ctx.answerCbQuery(); ctx.reply(`🗝 <b>3 Ключа (99 ₽)</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(99, `${ctx.from.id}_keys_3`))], [Markup.button.callback('✅ Я оплатил', 'check_keys_3')]]) }); });
+bot.action('shop_keys_10', (ctx) => { ctx.answerCbQuery(); ctx.reply(`🗝 <b>10 Ключей (249 ₽)</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(249, `${ctx.from.id}_keys_10`))], [Markup.button.callback('✅ Я оплатил', 'check_keys_10')]]) }); });
 
 bot.hears('🤫 Шёпоты', (ctx) => {
     ctx.session = {};
@@ -209,7 +250,6 @@ bot.on('text', async (ctx) => {
         if (ctx.session.waitingForPremiumId) { ctx.session.waitingForPremiumId = false; const t = getUser(text.trim()); if(!t) return ctx.reply('❌'); t.is_premium=true; t.premium_expiry=0; saveUser(t); return ctx.reply('✅'); }
     }
 
-    // Шаги отправки
     if (ctx.session.sender_step === 'ask_photo') return ctx.reply('📸 Нужно фото.');
     if (ctx.session.sender_step === 'ask_name') { ctx.session.sender_name = text; ctx.session.sender_step = 'ask_photo'; return ctx.reply('📸 Прикрепи фото:'); }
     if (ctx.session.sender_step === 'ask_message') {
@@ -231,7 +271,6 @@ async function sendMessage(ctx, is_open) {
     try { await bot.telegram.sendMessage(targetId, `🚨 <b>Тебе пришел новый шёпот!</b>\n⏳ <i>Исчезнет через 24 часа...</i>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('📬 Прочитать', `read_${msgId}`)]]) }); } catch (e) {}
 }
 
-// === ЧТЕНИЕ И ОПЛАТЫ ===
 bot.action(/^read_(.+)$/, async (ctx) => { const msg = getMessage(ctx.match[1]); if (!msg) return ctx.answerCbQuery('Устарело'); await showSingleMessage(ctx, msg); });
 
 async function showNextMessage(ctx) { 
@@ -253,7 +292,7 @@ async function showSingleMessage(ctx, msg) {
             ...Markup.inlineKeyboard([ 
                 [Markup.button.callback('🗝️ Использовать 1 Ключ', `pay_read_key_${msg.id}`)], 
                 [Markup.button.url('👥 Бесплатно (Пригласи друга)', `https://t.me/${ctx.botInfo.username}?start=r_${userId}`)], 
-                [Markup.button.callback('👑 Премиум навсегда', 'shop_premium')] 
+                [Markup.button.callback('👑 Купить Премиум (Безлимит)', 'shop_premium_info')] 
             ])
         });
     }
@@ -274,21 +313,21 @@ async function showSingleMessage(ctx, msg) {
         ctx.replyWithPhoto(msg.sender_photo, { caption: `📩 "${msg.text}"\n\n👤 <b>Автор:</b> ${msg.sender_name}`, parse_mode: 'HTML', ...replyMarkup }).catch(() => { ctx.reply(`📩 "${msg.text}"\n\n👤 <b>${msg.sender_name}</b>`, { parse_mode: 'HTML', ...replyMarkup }); });
     } else { 
         ctx.answerCbQuery(); 
-        ctx.reply(`📩 <b>Анонимное послание:</b>\n"${msg.text}"\n\n🎭 Автор скрыт.`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('👁 Прочитать', `mark_read_${msg.id}`)], [Markup.button.callback('👻 Втайне (49₽)', `mark_ghost_${msg.id}`)]]) }); 
+        ctx.reply(`📩 <b>Анонимное послание:</b>\n"${msg.text}"\n\n🎭 Автор скрыт.`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('👁 Прочитать (бесплатно)', `mark_read_${msg.id}`)], [Markup.button.callback('👻 Втайне / Призрак (49₽)', `mark_ghost_${msg.id}`)]]) }); 
     }
 }
 
 // Кнопка ответа на сообщение
 bot.action(/^reply_(.+)$/, async (ctx) => {
-    const msgId = ctx.match[1];
-    const msg = getMessage(msgId);
-    if(!msg) return ctx.answerCbQuery('Ошибка');
-    const targetId = msg.sender_id;
-    if(!targetId) return ctx.answerCbQuery('Нельзя ответить');
+    const msgId = ctx.match[1]; const msg = getMessage(msgId); if(!msg) return ctx.answerCbQuery('Ошибка');
+    const targetId = msg.sender_id; if(!targetId) return ctx.answerCbQuery('Нельзя ответить');
     ctx.session = { targetId: targetId, sender_step: 'ask_name', mood: 'default', replyTo: msgId };
-    ctx.answerCbQuery();
-    ctx.reply(`💬 <b>Ответь анонимно на это послание!</b>\n👤 Укажи имя:`, { parse_mode: 'HTML', reply_markup: Markup.removeKeyboard() });
+    ctx.answerCbQuery(); ctx.reply(`💬 <b>Ответь анонимно!</b>\n👤 Укажи имя:`, { parse_mode: 'HTML', reply_markup: Markup.removeKeyboard() });
 });
+
+bot.action('shop_premium_info', (ctx) => { ctx.answerCbQuery(); ctx.reply(`👑 <b>Премиум</b> — все авторы раскрыты автоматически!\n\nЦены:\n3 дня - 99₽\n1 месяц - 299₽\nНавсегда - 799₽`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('👑 Купить Премиум', 'shop_premium')]]) }); });
+
+bot.action('shop_premium', (ctx) => { ctx.answerCbQuery(); ctx.reply(`👑 <b>Выбери тариф Премиума:</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('3 дня (99₽)', 'shop_prem_3')], [Markup.button.callback('1 месяц (299₽)', 'shop_prem_30')], [Markup.button.callback('Навсегда (799₽)', 'shop_prem_forever')]]) }); });
 
 bot.action(/^mark_read_(.+)$/, async (ctx) => { 
     const msg = getMessage(ctx.match[1]); if (!msg) return ctx.answerCbQuery('Ошибка');
@@ -296,23 +335,28 @@ bot.action(/^mark_read_(.+)$/, async (ctx) => {
     if (msg.is_revealed || msg.is_open) return;
     ctx.reply(`📩 Прочитано!\n"${msg.text}"\n\n🎭 Кто автор?`, { 
         parse_mode: 'HTML', 
-        ...Markup.inlineKeyboard([ [Markup.button.callback(`🗝️ 1 Ключ (${getFirstLetter(msg.sender_name)})`, `hint_1_${msg.id}`)], [Markup.button.callback('💳 Раскрыть полностью (149₽)', `buy_reveal_${msg.id}`)], [Markup.button.url('👥 Нет ключей? Пригласи друга!', `https://t.me/${ctx.botInfo.username}?start=r_${ctx.from.id}`)], [Markup.button.callback('➡️ Далее', 'skip_msg')] ])
+        ...Markup.inlineKeyboard([ 
+            [Markup.button.callback(`🗝️ 1 Ключ (Буква: ${getFirstLetter(msg.sender_name)})`, `hint_1_${msg.id}`)], 
+            [Markup.button.callback('💳 Раскрыть полностью (149₽)', `buy_reveal_${msg.id}`)], 
+            [Markup.button.url('👥 Нет ключей? Пригласи друга!', `https://t.me/${ctx.botInfo.username}?start=r_${ctx.from.id}`)], 
+            [Markup.button.callback('➡️ Далее', 'skip_msg')] 
+        ])
     });
 });
 
 bot.action(/^mark_ghost_(.+)$/, async (ctx) => { 
     const msgId = ctx.match[1]; const user = getUser(ctx.from.id.toString()); const msg = getMessage(msgId); if (!msg) return ctx.answerCbQuery('Ошибка');
     if (isUserPremium(user) || user.is_ghost) { markAsRead(msgId, true); ctx.answerCbQuery('👻 Втайне!'); ctx.deleteMessage().catch(()=>{}); ctx.reply(`📩 "${msg.text}"`, { parse_mode: 'HTML' }); return; }
-    ctx.answerCbQuery(); ctx.reply(`👻 <b>Призрак (49₽)</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(49, `${ctx.from.id}_ghost_${msgId}`))], [Markup.button.callback('✅ Я оплатил', `check_ghost_${msgId}`)]]) });
+    ctx.answerCbQuery(); ctx.reply(`👻 <b>Призрак (49₽)</b> - автор не узнает, что ты читал.`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(49, `${ctx.from.id}_ghost_${msgId}`))], [Markup.button.callback('✅ Я оплатил', `check_ghost_${msgId}`)]]) });
 });
 
 bot.action(/^pay_read_key_(.+)$/, async (ctx) => { 
     const msgId = ctx.match[1]; const spent = spendKeys(ctx.from.id.toString(), 1);
     if (spent) { ctx.answerCbQuery('Ключ использован!'); const msg = getMessage(msgId); if(msg) { markAsRead(msgId, false); await showSingleMessage(ctx, msg); } } 
-    else { ctx.answerCbQuery('Нет ключей! Пригласи друга.', true); }
+    else { ctx.answerCbQuery('Нет ключей! Зайди в 🛒 Магазин.', true); }
 });
 
-bot.action(/^hint_1_(.+)$/, async (ctx) => { const msg = getMessage(ctx.match[1]); const spent = spendKeys(ctx.from.id.toString(), 1); if(spent) await ctx.answerCbQuery(`Имя: ${msg.sender_name.charAt(0).toUpperCase()}***`, true); else await ctx.answerCbQuery('Мало ключей!', true); });
+bot.action(/^hint_1_(.+)$/, async (ctx) => { const msg = getMessage(ctx.match[1]); const spent = spendKeys(ctx.from.id.toString(), 1); if(spent) await ctx.answerCbQuery(`Имя: ${msg.sender_name.charAt(0).toUpperCase()}***`, true); else await ctx.answerCbQuery('Мало ключей! Зайди в 🛒 Магазин.', true); });
 
 bot.action(/^react_(.+?)_(.+)$/, async (ctx) => {
     const emoji = ctx.match[1]; const msgId = ctx.match[2]; const msg = getMessage(msgId); if (!msg) return ctx.answerCbQuery('Ошибка');
@@ -324,17 +368,15 @@ bot.action(/^react_(.+?)_(.+)$/, async (ctx) => {
 bot.action('skip_msg', (ctx) => { ctx.answerCbQuery(); showNextMessage(ctx); });
 bot.action(/^reveal_guest_(.+)$/, async (ctx) => { ctx.answerCbQuery(); ctx.reply(`👀 <b>Узнать гостя (99₽)</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(99, `${ctx.from.id}_guest_${ctx.match[1]}`))], [Markup.button.callback('✅ Я оплатил', `check_guest_${ctx.match[1]}`)]]) }); });
 
-bot.action('shop_keys', (ctx) => { ctx.answerCbQuery(); ctx.reply(`🗝️ <b>Покупка Ключей</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 3 Ключа (99₽)', generatePaymentLink(99, `${ctx.from.id}_keys_3`))], [Markup.button.callback('✅ Я оплатил 3', 'check_keys_3')], [Markup.button.url('💳 10 Ключей (249₽)', generatePaymentLink(249, `${ctx.from.id}_keys_10`))], [Markup.button.callback('✅ Я оплатил 10', 'check_keys_10')]]) }); });
-bot.action('shop_premium', (ctx) => { ctx.answerCbQuery(); ctx.reply(`👑 <b>Премиум</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 3 дня (99₽)', generatePaymentLink(99, `${ctx.from.id}_prem_3`))], [Markup.button.callback('✅ Я оплатил 3', 'check_prem_3')], [Markup.button.url('💳 Навсегда (799₽)', generatePaymentLink(799, `${ctx.from.id}_prem_forever`))], [Markup.button.callback('✅ Навсегда', 'check_prem_forever')]]) }); });
-
-bot.action(/^buy_reveal_(.+)$/, async (ctx) => { ctx.answerCbQuery(); ctx.reply(`🕵️ Раскрыть (149₽)`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(149, `${ctx.from.id}_reveal_${ctx.match[1]}`))], [Markup.button.callback('✅ Я оплатил', `check_reveal_specific_${ctx.match[1]}`)]]) }); });
+bot.action(/^buy_reveal_(.+)$/, async (ctx) => { ctx.answerCbQuery(); ctx.reply(`🕵️ <b>Раскрыть автора полностью (149₽)</b>`, { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.url('💳 Оплатить', generatePaymentLink(149, `${ctx.from.id}_reveal_${ctx.match[1]}`))], [Markup.button.callback('✅ Я оплатил', `check_reveal_specific_${ctx.match[1]}`)]]) }); });
 
 // === ПРОВЕРКИ ОПЛАТ ===
 bot.action('check_keys_3', async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if (await checkYooMoneyPayment(`${ctx.from.id}_keys_3`)) { addKeys(ctx.from.id, 3); ctx.reply('🗝️ +3 Ключа!'); } else { ctx.reply('❌ Не найдено.'); } });
 bot.action('check_keys_10', async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if (await checkYooMoneyPayment(`${ctx.from.id}_keys_10`)) { addKeys(ctx.from.id, 10); ctx.reply('🗝️ +10 Ключей!'); } else { ctx.reply('❌ Не найдено.'); } });
 bot.action('check_prem_3', async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if (await checkYooMoneyPayment(`${ctx.from.id}_prem_3`)) { const u = getUser(ctx.from.id.toString()); u.is_premium = true; u.premium_expiry = Date.now() + 3*24*60*60*1000; saveUser(u); ctx.reply('👑 Активирован на 3 дня!'); } else { ctx.reply('❌ Не найдено.'); } });
-bot.action('check_prem_forever', async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if (await checkYooMoneyPayment(`${ctx.from.id}_prem_forever`)) { const u = getUser(ctx.from.id.toString()); u.is_premium = true; u.premium_expiry = 0; saveUser(u); ctx.reply('👑 Навсегда!'); } else { ctx.reply('❌ Не найдено.'); } });
-bot.action(/^check_ghost_(.+)$/, async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if(await checkYooMoneyPayment(`${ctx.from.id}_ghost_${ctx.match[1]}`)){ markAsRead(ctx.match[1], true); ctx.reply('👻 Призрак!'); const msg = getMessage(ctx.match[1]); if(msg) ctx.reply(`📩 "${msg.text}"`, {parse_mode:'HTML'}); } else { ctx.reply('❌'); } });
+bot.action('check_prem_30', async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if (await checkYooMoneyPayment(`${ctx.from.id}_prem_30`)) { const u = getUser(ctx.from.id.toString()); u.is_premium = true; u.premium_expiry = Date.now() + 30*24*60*60*1000; saveUser(u); ctx.reply('👑 Активирован на 1 месяц!'); } else { ctx.reply('❌ Не найдено.'); } });
+bot.action('check_prem_forever', async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if (await checkYooMoneyPayment(`${ctx.from.id}_prem_forever`)) { const u = getUser(ctx.from.id.toString()); u.is_premium = true; u.premium_expiry = 0; saveUser(u); ctx.reply('👑 Премиум Навсегда активирован!'); } else { ctx.reply('❌ Не найдено.'); } });
+bot.action(/^check_ghost_(.+)$/, async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if(await checkYooMoneyPayment(`${ctx.from.id}_ghost_${ctx.match[1]}`)){ markAsRead(ctx.match[1], true); ctx.reply('👻 Призрак применен!'); const msg = getMessage(ctx.match[1]); if(msg) ctx.reply(`📩 "${msg.text}"`, {parse_mode:'HTML'}); } else { ctx.reply('❌'); } });
 bot.action(/^check_guest_(.+)$/, async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if(await checkYooMoneyPayment(`${ctx.from.id}_guest_${ctx.match[1]}`)){ const guest = getUser(ctx.match[1]); ctx.reply(`👀 Гость: ${guest ? guest.first_name : 'Аноним'}`, {parse_mode:'HTML'}); } else { ctx.reply('❌'); } });
 bot.action(/^check_reveal_specific_(.+)$/, async (ctx) => { await ctx.answerCbQuery('Проверяю...'); if(await checkYooMoneyPayment(`${ctx.from.id}_reveal_${ctx.match[1]}`)){ const m = getMessage(ctx.match[1]); if(m) { revealMessage(m.id); ctx.replyWithPhoto(m.sender_photo, {caption: `👤 ${m.sender_name}\n\n"${m.text}"`, parse_mode:'HTML'}).catch(()=>ctx.reply(`👤 ${m.sender_name}\n\n"${m.text}"`, {parse_mode:'HTML'})); if(m.sender_id) bot.telegram.sendMessage(m.sender_id, `👁 Твой шёпот раскрыли!`).catch(()=>{}); } } else { ctx.reply('❌'); } });
 
