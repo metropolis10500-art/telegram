@@ -5,12 +5,12 @@ const fs = require('fs');
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const YOOMONEY_WALLET = process.env.YOOMONEY_WALLET;
 const YOOMONEY_API_TOKEN = process.env.YOOMONEY_API_TOKEN;
-const ADMIN_ID = parseInt(process.env.ADMIN_ID);
+const ADMIN_ID = process.env.ADMIN_ID; // Оставляем строкой для удобства сравнения
 const DB_FILE = './database.json';
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// === ВСТРОЕННАЯ СЕССИЯ (вместо @telegraf/session) ===
+// === ВСТРОЕННАЯ СЕССИЯ ===
 const sessionStore = new Map();
 const sessionMiddleware = async (ctx, next) => {
     const key = ctx.from ? ctx.from.id.toString() : 'default';
@@ -19,7 +19,7 @@ const sessionMiddleware = async (ctx, next) => {
     sessionStore.set(key, ctx.session);
 };
 bot.use(sessionMiddleware);
-// ================================================
+// ========================
 
 // === БАЗА ДАННЫХ ===
 let db = { users: {}, messages: {}, used_payments: {} };
@@ -50,7 +50,6 @@ function scheduleSave() {
     }
 }
 
-// Безопасное сохранение при выключении
 function gracefulShutdown() {
     console.log('Сохранение базы данных перед выключением...');
     try {
@@ -61,7 +60,6 @@ function gracefulShutdown() {
     process.exit();
 }
 
-// Очистка старых сообщений (раз в час)
 setInterval(() => {
     const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
     let deletedCount = 0;
@@ -79,8 +77,9 @@ setInterval(() => {
 
 // === ФУНКЦИИ БАЗЫ ===
 function registerUser(tg_id, username, first_name) {
-    if (!db.users[tg_id]) { 
-        db.users[tg_id] = { username, first_name, is_premium: false, premium_expiry: 0, ref_count: 0, invited_by: null }; 
+    const userId = tg_id.toString(); // Приводим к строке
+    if (!db.users[userId]) { 
+        db.users[userId] = { username, first_name, is_premium: false, premium_expiry: 0, ref_count: 0, invited_by: null }; 
         scheduleSave(); 
     }
 }
@@ -91,13 +90,14 @@ function generateId() {
 
 function addMessage(target_id, text, sender_name, sender_photo, is_open) { 
     const id = generateId(); 
-    db.messages[id] = { id, target_id, text, sender_name, sender_photo, is_read: false, is_revealed: false, is_open: is_open, created_at: Date.now() }; 
+    db.messages[id] = { id, target_id: target_id.toString(), text, sender_name, sender_photo, is_read: false, is_revealed: false, is_open: is_open, created_at: Date.now() }; 
     scheduleSave(); 
     return id; 
 }
 
 function getUnreadMessages(target_id) { 
-    return Object.values(db.messages).filter(m => m.target_id === target_id && !m.is_read).sort((a, b) => b.created_at - a.created_at); 
+    const tid = target_id.toString();
+    return Object.values(db.messages).filter(m => m.target_id === tid && !m.is_read).sort((a, b) => b.created_at - a.created_at); 
 }
 
 function getMessageById(id) { return db.messages[id]; }
@@ -143,6 +143,7 @@ async function checkYooMoneyPayment(label) {
 }
 
 function isUserPremium(user) {
+    if (!user) return false; // Защита от undefined
     return user.is_premium && (user.premium_expiry === 0 || user.premium_expiry > Date.now());
 }
 
@@ -151,12 +152,12 @@ function isUserPremium(user) {
 // =====================================================================
 
 bot.start(async (ctx) => {
-    const userId = ctx.from.id;
+    const userId = ctx.from.id.toString();
     registerUser(userId, ctx.from.username || 'no_user', ctx.from.first_name || 'Аноним');
     const payload = ctx.startPayload;
 
     if (payload && payload.startsWith('r_')) {
-        const refId = parseInt(payload.replace('r_', ''));
+        const refId = payload.replace('r_', '');
         if (refId !== userId && db.users[refId]) {
             if (!db.users[userId].invited_by) {
                 db.users[userId].invited_by = refId;
@@ -169,7 +170,7 @@ bot.start(async (ctx) => {
     }
 
     if (payload && payload.startsWith('w_')) {
-        const targetId = parseInt(payload.replace('w_', ''));
+        const targetId = payload.replace('w_', '');
         const targetUser = db.users[targetId];
         if (!targetUser) return ctx.reply('Этот человек еще не в Шёпоте :(');
         
@@ -201,7 +202,7 @@ bot.start(async (ctx) => {
 // --- КНОПКИ МЕНЮ ---
 bot.hears('🔗 Моя ссылка', (ctx) => {
     ctx.session = {};
-    const userId = ctx.from.id;
+    const userId = ctx.from.id.toString();
     const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
     const refLink = `https://t.me/${ctx.botInfo.username}?start=r_${userId}`;
     ctx.reply(
@@ -213,7 +214,10 @@ bot.hears('🔗 Моя ссылка', (ctx) => {
 
 bot.hears('📬 Сообщения', (ctx) => {
     ctx.session = {};
-    const msgs = getUnreadMessages(ctx.from.id);
+    const userId = ctx.from.id.toString();
+    if (!db.users[userId]) registerUser(userId, ctx.from.username, ctx.from.first_name); // Защита
+    
+    const msgs = getUnreadMessages(userId);
     if (msgs.length === 0) return ctx.reply('📭 Пока пусто... Поделись ссылкой!');
     ctx.session.msgQueue = msgs.map(m => m.id);
     showNextMessage(ctx);
@@ -235,7 +239,10 @@ bot.hears('💎 Премиум', (ctx) => {
 
 bot.hears('👤 Профиль', (ctx) => {
     ctx.session = {};
-    const user = db.users[ctx.from.id];
+    const userId = ctx.from.id.toString();
+    if (!db.users[userId]) registerUser(userId, ctx.from.username, ctx.from.first_name); // Защита от undefined
+    
+    const user = db.users[userId];
     const premiumStatus = isUserPremium(user) ? '👑 Активен' : '❌ Нет';
     ctx.reply(
         `👤 <b>Мой профиль</b>\n\n🤫 Имя: <b>${ctx.from.first_name}</b>\n👑 Премиум: ${premiumStatus}\n👥 Переходов по рефке: <b>${user.ref_count}</b>`,
@@ -264,9 +271,10 @@ bot.on('document', async (ctx) => {
 bot.on('text', async (ctx) => {
     if (!ctx.session) ctx.session = {};
     const text = ctx.message.text;
+    const userId = ctx.from.id.toString();
     
     // Админ-команды
-    if (ctx.from.id === ADMIN_ID) {
+    if (userId === ADMIN_ID) {
         if (ctx.session.waitingForBroadcast) {
             ctx.session.waitingForBroadcast = false;
             const users = Object.keys(db.users); 
@@ -287,7 +295,7 @@ bot.on('text', async (ctx) => {
         }
         if (ctx.session.waitingForPremiumId) {
             ctx.session.waitingForPremiumId = false;
-            const targetId = parseInt(text);
+            const targetId = text.trim();
             if (!db.users[targetId]) return ctx.reply('❌ Пользователь не найден.');
             db.users[targetId].is_premium = true; 
             db.users[targetId].premium_expiry = 0;
@@ -360,7 +368,8 @@ async function sendMessage(ctx, is_open) {
 
 // === ЧТЕНИЕ СООБЩЕНИЙ ===
 bot.action('read_messages', (ctx) => { 
-    const msgs = getUnreadMessages(ctx.from.id); 
+    const userId = ctx.from.id.toString();
+    const msgs = getUnreadMessages(userId); 
     if (msgs.length === 0) return ctx.answerCbQuery('Пусто!'); 
     ctx.session = ctx.session || {}; 
     ctx.session.msgQueue = msgs.map(m => m.id); 
@@ -387,7 +396,10 @@ function showNextMessage(ctx) {
 }
 
 function showSingleMessage(ctx, msg) {
-    const user = db.users[ctx.from.id]; 
+    const userId = ctx.from.id.toString();
+    if (!db.users[userId]) registerUser(userId, ctx.from.username, ctx.from.first_name);
+    
+    const user = db.users[userId]; 
     const isPremium = isUserPremium(user); 
     const hasAccess = msg.is_open || isPremium || msg.is_revealed;
 
@@ -465,7 +477,8 @@ bot.action(/^buy_reveal_(.+)$/, async (ctx) => {
 bot.action('check_premium', async (ctx) => { 
     await ctx.answerCbQuery('Проверяю...'); 
     if (await checkYooMoneyPayment(`${ctx.from.id}_premium`)) { 
-        const u = db.users[ctx.from.id]; 
+        const userId = ctx.from.id.toString();
+        const u = db.users[userId]; 
         u.is_premium = true; 
         u.premium_expiry = 0;
         scheduleSave(); 
@@ -477,8 +490,9 @@ bot.action('check_premium', async (ctx) => {
 
 bot.action('check_reveal_0', async (ctx) => { 
     await ctx.answerCbQuery('Проверяю...'); 
-    if (await checkYooMoneyPayment(`${ctx.from.id}_reveal_0`)) { 
-        const m = Object.values(db.messages).find(m => m.target_id === ctx.from.id && !m.is_revealed && !m.is_open);
+    const userId = ctx.from.id.toString();
+    if (await checkYooMoneyPayment(`${userId}_reveal_0`)) { 
+        const m = Object.values(db.messages).find(m => m.target_id === userId && !m.is_revealed && !m.is_open);
         if(m) { 
             revealMessage(m.id); 
             ctx.replyWithPhoto(m.sender_photo, { caption: `👤 Автор раскрыт: ${m.sender_name}\n\n"${m.text}"`, parse_mode:'HTML'}).catch(() => {
@@ -495,7 +509,8 @@ bot.action('check_reveal_0', async (ctx) => {
 bot.action(/^check_reveal_specific_(.+)$/, async (ctx) => { 
     const id = ctx.match[1]; 
     await ctx.answerCbQuery('Проверяю...'); 
-    if(await checkYooMoneyPayment(`${ctx.from.id}_reveal_${id}`)){ 
+    const userId = ctx.from.id.toString();
+    if(await checkYooMoneyPayment(`${userId}_reveal_${id}`)){ 
         const m = getMessageById(id); 
         if(m) { 
             revealMessage(m.id); 
@@ -512,7 +527,7 @@ bot.action(/^check_reveal_specific_(.+)$/, async (ctx) => {
 
 // === АДМИНКА ===
 bot.command('admin', async (ctx) => { 
-    if (ctx.from.id !== ADMIN_ID) return; 
+    if (ctx.from.id.toString() !== ADMIN_ID) return; 
     ctx.session = {};
     ctx.reply('👑 Админка', { 
       parse_mode: 'HTML', 
@@ -526,7 +541,7 @@ bot.command('admin', async (ctx) => {
 });
 
 bot.action('admin_stats', async (ctx) => { 
-    if (ctx.from.id !== ADMIN_ID) return; 
+    if (ctx.from.id.toString() !== ADMIN_ID) return; 
     await ctx.answerCbQuery(); 
     const u = Object.keys(db.users).length; 
     const m = Object.keys(db.messages).length; 
@@ -534,21 +549,21 @@ bot.action('admin_stats', async (ctx) => {
 });
 
 bot.action('admin_broadcast', (ctx) => { 
-    if (ctx.from.id !== ADMIN_ID) return; 
+    if (ctx.from.id.toString() !== ADMIN_ID) return; 
     ctx.answerCbQuery(); 
     ctx.session.waitingForBroadcast = true; 
     ctx.reply('📢 Введи текст для рассылки (HTML поддерживается):'); 
 });
 
 bot.action('admin_grant_premium', (ctx) => { 
-    if (ctx.from.id !== ADMIN_ID) return; 
+    if (ctx.from.id.toString() !== ADMIN_ID) return; 
     ctx.answerCbQuery(); 
     ctx.session.waitingForPremiumId = true; 
     ctx.reply('👑 Введи Telegram ID пользователя:'); 
 });
 
 bot.action('admin_clear_msgs', (ctx) => { 
-    if (ctx.from.id !== ADMIN_ID) return; 
+    if (ctx.from.id.toString() !== ADMIN_ID) return; 
     ctx.answerCbQuery(); 
     const c = Object.keys(db.messages).length; 
     db.messages = {}; 
