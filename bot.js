@@ -29,10 +29,9 @@ if (fs.existsSync(DB_FILE)) {
         db.used_payments = loadedData.used_payments || {};
         db.messages = loadedData.messages || {};
         
-        // Миграция БД
         Object.keys(db.users).forEach(id => { 
             if (db.users[id].keys === undefined) db.users[id].keys = 0; 
-            if (db.users[id].is_ghost === undefined) db.users[id].is_ghost = false; // Флаг призрака
+            if (db.users[id].is_ghost === undefined) db.users[id].is_ghost = false;
         });
         Object.keys(db.messages).forEach(id => { 
             if (!db.messages[id].sender_id) db.messages[id].sender_id = null; 
@@ -161,8 +160,7 @@ bot.start(async (ctx) => {
         const targetUser = db.users[targetId];
         if (!targetUser) return ctx.reply('Этот человек еще не в Шёпоте :(');
         
-        // 🔥 МОНЕТИЗАЦИЯ ЭГО: Уведомление о госте
-        const guestName = ctx.from.first_name || 'Аноним';
+        // МОНЕТИЗАЦИЯ ЭГО: Уведомление о госте
         bot.telegram.sendMessage(targetId, 
             `👀 <b>Внимание!</b>\nКто-то только что открывал твою ссылку, чтобы написать шёпот...`, 
             {
@@ -341,7 +339,6 @@ bot.action(/^read_(.+)$/, (ctx) => {
     const msgId = ctx.match[1]; 
     const msg = getMessageById(msgId); 
     if (!msg) return ctx.answerCbQuery('Устарело'); 
-    // Не помечаем как прочитанное сразу! Даем выбор.
     showSingleMessage(ctx, msg);
 });
 
@@ -360,15 +357,13 @@ function showSingleMessage(ctx, msg) {
     const isPremium = isUserPremium(user); 
     const hasAccess = msg.is_open || isPremium || msg.is_revealed;
 
-    // Кнопки чтения (Призрак или Обычное)
-    const readKeyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('👁 Прочитать (отправитель увидит)', `mark_read_${msg.id}`)],
-        [Markup.button.callback('👻 Прочитать как Призрак (49 ₽)', `mark_ghost_${msg.id}`)]
-    ]);
-
-    // Меню реакций
+    // Меню реакций (исправленная строка)
     const reactionKeyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('❤️', `react_❤️_${msg.id}`), Markup.button.callback('😂', `react_😂_${msg.id}`), Markup.button.callback('😱`, `react_😱_${msg.id}`)],
+        [
+            Markup.button.callback('❤️', `react_❤️_${msg.id}`), 
+            Markup.button.callback('😂', `react_😂_${msg.id}`), 
+            Markup.button.callback('😱', `react_😱_${msg.id}`)
+        ],
         [Markup.button.callback('➡️ Далее', 'skip_msg')]
     ]);
 
@@ -406,9 +401,8 @@ bot.action(/^mark_read_(.+)$/, (ctx) => {
     ctx.answerCbQuery();
     ctx.deleteMessage().catch(()=>{});
     
-    if (msg.is_revealed || msg.is_open) return; // Если уже раскрыто - ничего не делаем
+    if (msg.is_revealed || msg.is_open) return;
     
-    // Показываем меню подсказок
     ctx.reply(
         `📩 <b>Текст прочитан! Отправитель увидит это.</b>\n"${msg.text}"\n\n🎭 Хочешь узнать автора?`, 
         { 
@@ -430,7 +424,6 @@ bot.action(/^mark_ghost_(.+)$/, async (ctx) => {
     const msg = getMessageById(msgId); 
     if (!msg) return ctx.answerCbQuery('Ошибка');
 
-    // Если премиум или уже куплен призрак — бесплатно
     if (isUserPremium(user) || user.is_ghost) {
         markAsRead(msg.id, true);
         ctx.answerCbQuery('👻 Прочитано втайне!');
@@ -439,7 +432,6 @@ bot.action(/^mark_ghost_(.+)$/, async (ctx) => {
         return;
     }
 
-    // Иначе предлагаем оплатить
     ctx.answerCbQuery();
     ctx.reply(
         `👻 <b>Режим Призрака (49 ₽)</b>\nОтправитель не увидит, что ты читал сообщение.`,
