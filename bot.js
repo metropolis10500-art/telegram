@@ -1,6 +1,5 @@
 require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
-const session = require('@telegraf/session');
 const fs = require('fs');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -11,8 +10,16 @@ const DB_FILE = './database.json';
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Подключаем сессии (ОБЯЗАТЕЛЬНО для хранения ctx.session между сообщениями)
-bot.use(session());
+// === ВСТРОЕННАЯ СЕССИЯ (вместо @telegraf/session) ===
+const sessionStore = new Map();
+const sessionMiddleware = async (ctx, next) => {
+    const key = ctx.from ? ctx.from.id.toString() : 'default';
+    ctx.session = sessionStore.get(key) || {};
+    await next();
+    sessionStore.set(key, ctx.session);
+};
+bot.use(sessionMiddleware);
+// ================================================
 
 // === БАЗА ДАННЫХ ===
 let db = { users: {}, messages: {}, used_payments: {} };
@@ -79,7 +86,6 @@ function registerUser(tg_id, username, first_name) {
 }
 
 function generateId() {
-    // Надежная генерация ID во избежание коллизий
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
@@ -111,7 +117,6 @@ function generatePaymentLink(amount, label) {
 }
 
 async function checkYooMoneyPayment(label) { 
-    // Защита от повторного использования одной ссылки оплаты
     if (db.used_payments[label]) return false;
 
     try { 
@@ -127,7 +132,7 @@ async function checkYooMoneyPayment(label) {
         const isSuccess = d.operations && d.operations.some(o => o.status === 'success');
         
         if (isSuccess) {
-            db.used_payments[label] = true; // Погашаем чек
+            db.used_payments[label] = true;
             scheduleSave();
         }
         return isSuccess;
@@ -138,7 +143,6 @@ async function checkYooMoneyPayment(label) {
 }
 
 function isUserPremium(user) {
-    // premium_expiry === 0 означает "навсегда"
     return user.is_premium && (user.premium_expiry === 0 || user.premium_expiry > Date.now());
 }
 
@@ -151,7 +155,6 @@ bot.start(async (ctx) => {
     registerUser(userId, ctx.from.username || 'no_user', ctx.from.first_name || 'Аноним');
     const payload = ctx.startPayload;
 
-    // Вход по реферальной ссылке
     if (payload && payload.startsWith('r_')) {
         const refId = parseInt(payload.replace('r_', ''));
         if (refId !== userId && db.users[refId]) {
@@ -165,7 +168,6 @@ bot.start(async (ctx) => {
         return ctx.reply('👋 Добро пожаловать! Тебя пригласили в Шёпот.', { parse_mode: 'HTML', ...getMainMenu() });
     }
 
-    // Вход для отправки сообщения
     if (payload && payload.startsWith('w_')) {
         const targetId = parseInt(payload.replace('w_', ''));
         const targetUser = db.users[targetId];
@@ -180,7 +182,6 @@ bot.start(async (ctx) => {
         );
     }
 
-    // Обычный вход
     ctx.session = {};
     const link = `https://t.me/${ctx.botInfo.username}?start=w_${userId}`;
     const user = db.users[userId];
@@ -198,7 +199,6 @@ bot.start(async (ctx) => {
 });
 
 // --- КНОПКИ МЕНЮ ---
-// ВАЖНО: Сбрасываем сессию при нажатии кнопок меню, чтобы бот не "застревал" в режиме отправки
 bot.hears('🔗 Моя ссылка', (ctx) => {
     ctx.session = {};
     const userId = ctx.from.id;
@@ -252,10 +252,8 @@ bot.on('photo', async (ctx) => {
     await ctx.reply('✅ Фото получено! Теперь напиши послание или вопрос:');
 });
 
-// Обработка фото, отправленных как файл (документ)
 bot.on('document', async (ctx) => {
     if (!ctx.session || ctx.session.sender_step !== 'ask_photo') return;
-    // Берем превью документа или сам файл
     const fileId = ctx.message.document.thumb ? ctx.message.document.thumb.file_id : ctx.message.document.file_id;
     ctx.session.sender_photo = fileId;
     ctx.session.sender_step = 'ask_message';
@@ -280,7 +278,6 @@ bot.on('text', async (ctx) => {
                 try { 
                     await bot.telegram.sendMessage(id, text, { parse_mode: 'HTML' }); 
                     sent++; 
-                    // Защита от флуд-бана Телеграма (20 сообщений в секунду)
                     await new Promise(r => setTimeout(r, 55)); 
                 } catch(e) { 
                     failed++;
@@ -293,25 +290,22 @@ bot.on('text', async (ctx) => {
             const targetId = parseInt(text);
             if (!db.users[targetId]) return ctx.reply('❌ Пользователь не найден.');
             db.users[targetId].is_premium = true; 
-            db.users[targetId].premium_expiry = 0; // 0 = навсегда
+            db.users[targetId].premium_expiry = 0;
             scheduleSave();
             return ctx.reply(`✅ Premium выдан пользователю ${targetId}!`);
         }
     }
 
-    // Если пользователь на шаге отправки фото, но пишет текст
     if (ctx.session.sender_step === 'ask_photo') {
         return ctx.reply('📸 Нужно прислать именно фото (картинкой). Попробуй еще раз.');
     }
 
-    // Шаг 1: Имя
     if (ctx.session.sender_step === 'ask_name') {
         ctx.session.sender_name = text;
         ctx.session.sender_step = 'ask_photo';
         return ctx.reply('📸 Прикрепи свое фото (картинкой или файлом).');
     }
 
-    // Шаг 3: Текст послания и выбор типа отправки
     if (ctx.session.sender_step === 'ask_message') {
         if (text.length > 200) return ctx.reply('❌ Максимум 200 символов! Сократи текст и попробуй еще:');
         
@@ -331,7 +325,6 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// Обработка выбора типа отправки
 bot.action('send_anon', (ctx) => { sendMessage(ctx, false); });
 bot.action('send_open', (ctx) => { sendMessage(ctx, true); });
 
@@ -346,7 +339,7 @@ async function sendMessage(ctx, is_open) {
     const msgId = addMessage(targetId, text, sender_name, sender_photo, is_open);
 
     const typeText = is_open ? '👤 Открыто' : '🤫 Анонимно';
-    ctx.session = {}; // Очищаем сессию после отправки
+    ctx.session = {};
     await ctx.reply(`✅ Послание доставлено ${typeText}!`, getMainMenu());
     
     const notifyText = is_open 
@@ -388,7 +381,7 @@ function showNextMessage(ctx) {
     }
     const msgId = ctx.session.msgQueue.shift(); 
     const msg = getMessageById(msgId); 
-    if (!msg) return showNextMessage(ctx); // Если сообщение уже удалено чистильщиком, смотрим следующее
+    if (!msg) return showNextMessage(ctx);
     markAsRead(msg.id); 
     showSingleMessage(ctx, msg);
 }
@@ -405,7 +398,6 @@ function showSingleMessage(ctx, msg) {
             caption: `📩 <b>Послание:</b>\n"${msg.text}"\n\n👤 <b>Автор:</b> ${msg.sender_name}`, 
             parse_mode: 'HTML' 
         }).catch(() => {
-            // Если фото не загружилось (файл был отправлен как документ без превью), шлем текстом
             ctx.reply(`📩 <b>Послание:</b>\n"${msg.text}"\n\n👤 <b>Автор:</b> ${msg.sender_name}`, { parse_mode: 'HTML' });
         });
     } else { 
@@ -475,7 +467,7 @@ bot.action('check_premium', async (ctx) => {
     if (await checkYooMoneyPayment(`${ctx.from.id}_premium`)) { 
         const u = db.users[ctx.from.id]; 
         u.is_premium = true; 
-        u.premium_expiry = 0; // Навсегда
+        u.premium_expiry = 0;
         scheduleSave(); 
         ctx.reply('👑 Премиум активирован навсегда! Все маски сняты.', {parse_mode:'HTML'}); 
     } else { 
@@ -521,7 +513,7 @@ bot.action(/^check_reveal_specific_(.+)$/, async (ctx) => {
 // === АДМИНКА ===
 bot.command('admin', async (ctx) => { 
     if (ctx.from.id !== ADMIN_ID) return; 
-    ctx.session = {}; // Очистка стейта юзера, если админ зашел в админку
+    ctx.session = {};
     ctx.reply('👑 Админка', { 
       parse_mode: 'HTML', 
       ...Markup.inlineKeyboard([
